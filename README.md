@@ -159,6 +159,22 @@ pythonw md-reader.pyw "path\to\file.md"
 
 配色建议：**背景别用纯白、文字别用纯黑**。纸质主题的精神是"永远差那么一点点色度"，才有墨水在纸上的感觉。
 
+## Claude Code 集成（可选）
+
+如果你是 Claude Code 用户，项目自带一个 Skill 定义 `skill/SKILL.md`，装好后就可以直接对 Claude 说"**打开你刚写的那份 md**"、"**用阅读器看一下**"、"**render this markdown**"之类的话，Claude 会自动调 `md-reader.cmd` 把文件拉到独立窗口里——不用你自己复制路径、不用 Edit 工具，也不会把文件内容贴回对话。
+
+安装：把 `skill/SKILL.md` 复制到 `~/.claude/skills/md-reader/SKILL.md`：
+
+```bash
+# Windows (Git Bash / WSL / MSYS)
+mkdir -p ~/.claude/skills/md-reader
+cp skill/SKILL.md ~/.claude/skills/md-reader/SKILL.md
+```
+
+或者直接在 Windows 资源管理器里把 `skill` 目录复制成 `C:\Users\<你>\.claude\skills\md-reader`。
+
+Claude Code 下次启动时会自动识别这个 skill，当对话里出现"打开 md"类语义时就调用。触发条件、边界（比如只在"想看、想读、想渲染"时调用，而不是"想编辑或提问"时）都写在 `SKILL.md` 的 description 里。
+
 ## 状态记忆
 
 所有偏好都写在 `.md-reader-state.json`（项目目录下），下次启动自动恢复：
@@ -215,6 +231,7 @@ md-reader.cmd   ← 薄启动器
 - **0.4.4** 分屏编辑模式
 - **0.4.5** 新增 Medium 主题 / 删除 Kraft / 修复切主题丢未保存编辑 / 修复 tab 字体黑粗体突兀 / 编辑模式升级双向同步（900 ms 自动保存 + 外部改动在本地未脏时自动拉取）
 - **0.4.6** `install.cmd` 一次性注册 `.md` 文件关联，解决 Win10/11 "打开方式"对话框"始终使用"勾选框灰掉的问题
+- **0.4.7** 修复渲染区无法选中复制文本。`self.text` 原本每次渲染后被 `configure(state="disabled")`，tkinter 下这会完全禁用鼠标选区。改为 read-only-but-selectable：保持 `state="normal"`，新增 `_readonly_keypress` 拦截所有写入类按键（只放行 `Ctrl+C / Ctrl+A` 和导航键），同时屏蔽 `<<Paste>>` / `<<Cut>>`。鼠标选区和 Ctrl+C 复制恢复正常
 
 ## 已知限制
 

@@ -10,8 +10,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Banner working files (ship the JPG, not the intermediate PNG)
+# Banner working files (ship the JPG, not the intermediate PNG or previews)
 banner.png
+banner-preview.*
 
 # Test scratch files
 test-scratch.md
