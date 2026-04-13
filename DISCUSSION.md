@@ -251,12 +251,46 @@ Windows 对 `HTCAPTION 点击拖拽 maximized 窗口` 的默认处理是：
 - [ ] **README 重写**：现在的 README 还停留在 mshta + Markdig 时代，与 0.4.0 后的实际严重不符
 - [ ] **CHANGELOG 0.5.0**：等 B + C 都收尾后写一个新版本号
 
+## 2026-04-14 从 .cmd 迁移到 .exe
+
+### 起因
+用户反映：把 md-reader 作为 `.md` 默认应用时，"打开方式"对话框里出现多条 "MD Reader"，选任何一条都反复弹出该对话框，无法真正选定。
+
+### 排查链
+1. **多条重复项的来源**：`HKCU\Software\Classes\Applications` 下留有 `md-reader.cmd` 和 `open-md.cmd` 两条旧条目，路径还指向 `D:\ClaudeCodeWorkspace\2026-04-13-markdown阅读器-md-reader\`（老路径，后来在外层加了 `2026-04-05-AI编程学习-learning-ai-coding\` 父目录，原路径彻底失效）；加上本次新建的 `MDReader.File` ProgID，共 3 条
+2. **点选后反复弹窗的根因**：
+   - 两条旧 Applications 条目启动时目标不存在 → 失败 → 回落到"选择应用"
+   - 新建的 `MDReader.File` ProgID 用 `.cmd` 作为 open command → **Windows 10/11 不接受 `.bat`/`.cmd` 作为合法默认应用**，对话框会反复弹
+3. **UserChoice 锁死**：`FileExts\.md\UserChoice` 指向已失效的 `Applications\md-reader.cmd`。该键受 DENY ACL 保护（Win10 以来的反劫持机制），脚本无法删除或覆写，只能通过"设置 → 默认应用"UI 让 Windows 自己重算 Hash
+
+### 决策：打包成单文件 .exe
+- 工具：PyInstaller `--onefile --windowed --name md-reader`
+- 产物：`dist\md-reader.exe`（~11 MB，单文件，自带 Python 运行时 + tkinter，纯 stdlib 依赖零外部包）
+- **关键验证**：`SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))` 用的是 `sys.argv[0]` 而非 `__file__`，在 PyInstaller `--onefile` 下会正确解析到 `.exe` 所在目录而非临时解压目录。状态文件/锁文件/崩溃日志路径都不用改代码
+- 冒烟测试：用 `dist\md-reader.exe` 打开含中文路径的 InsForge README，tasklist 看到两个 md-reader.exe 进程（主进程 + 单实例 IPC 子进程）正常驻留
+
+### 清理动作
+- 删除 `HKCU\Software\Classes\Applications\md-reader.cmd` 和 `open-md.cmd`
+- 删除 `FileExts\.md\OpenWithList` 中 MRU 里残留的 `md-reader.cmd` 条目
+- `MDReader.File\shell\open\command` 改指向 `dist\md-reader.exe "%1"`
+- `MDReader.File\DefaultIcon` 指向 `dist\md-reader.exe,0`
+- **用户需手动完成的最后一步**：Win11 UserChoice ACL 限制，必须通过 `设置 → 应用 → 默认应用 → .md` 选 **Markdown (MD Reader)**，让 Windows 自己重算 UserChoice Hash
+
+### 遗留 TODO
+- [ ] 把 `dist\md-reader.exe` 复制到不含中文的稳定目录（如 `D:\Tools\md-reader\`），避免源目录重命名再次失效
+- [ ] `build\` 和 `md-reader.spec` 加入 `.gitignore`
+- [ ] 给 exe 配真正的 `.ico` 图标（当前跳过，banner.jpg 不能直接作为 `--icon`）
+- [ ] 考虑把 PyInstaller 打包步骤写进 CHANGELOG.md 0.5.0 条目
+
 ## 文件清单当前状态
 
 | 文件 | 状态 |
 |---|---|
 | `md-reader.pyw` | ~870 行，含 Win32 自定义 chrome（实施中） |
-| `md-reader.cmd` | 薄封装，调 pythonw |
+| `md-reader.cmd` | 薄封装，调 pythonw（保留作为开发期启动器） |
+| `dist/md-reader.exe` | **PyInstaller 打包产物，当前推荐作为关联默认** |
+| `md-reader.spec` | PyInstaller 配置文件（自动生成） |
+| `build/` | PyInstaller 中间产物（建议加入 .gitignore） |
 | `test-sample.md` | GFM 测试覆盖标题/列表/任务/代码/表格/引用/中英混排 |
 | `README.md` | **过时**，停在 mshta 方案 |
 | `CHANGELOG.md` | 0.4.0 已写到位，0.5.0 待开 |
