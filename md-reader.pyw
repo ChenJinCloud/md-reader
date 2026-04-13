@@ -709,6 +709,27 @@ class MDReader:
         self._configure_tags()
         self.root.bind("<MouseWheel>", lambda e: self._wheel(e))
 
+        # Read-only but selectable: keep state="normal" so mouse selection
+        # and Ctrl+C work, but swallow any key that would mutate content.
+        # state="disabled" would block selection entirely.
+        self.text.bind("<Key>", self._readonly_keypress)
+        self.text.bind("<<Paste>>", lambda e: "break")
+        self.text.bind("<<Cut>>", lambda e: "break")
+
+    @staticmethod
+    def _readonly_keypress(e):
+        # Allow copy, select-all, and navigation; block everything else.
+        ctrl = bool(e.state & 0x4)
+        if ctrl and e.keysym.lower() in ("c", "a", "insert", "home", "end"):
+            return None
+        if e.keysym in (
+            "Left", "Right", "Up", "Down",
+            "Home", "End", "Prior", "Next",
+            "Shift_L", "Shift_R", "Control_L", "Control_R",
+        ):
+            return None
+        return "break"
+
     def _text_yview(self, *args):
         self.text.yview(*args)
         if 0 <= self.active < len(self.tabs):
@@ -1199,7 +1220,6 @@ class MDReader:
                 src = f"# Error\n\n```\n{e}\n```"
 
         self._cur_headings = []
-        self.text.configure(state="normal")
         self.text.delete("1.0", "end")
         self._render(src)
         # Paint the paper-grain dither across everything. tag_lower pushes
@@ -1209,7 +1229,6 @@ class MDReader:
             self.text.tag_lower("paper")
         except Exception:
             pass
-        self.text.configure(state="disabled")
         tab["headings"] = self._cur_headings
         self._populate_toc()
         # Restore scroll

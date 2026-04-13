@@ -3,6 +3,17 @@
 本项目所有重要变更都记录在此文件中。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.7] - 2026-04-14
+
+### 修复
+
+- **渲染区无法选中复制文本**：正文 `self.text` 在 `_render_active` 末尾被 `configure(state="disabled")`，tkinter 下 disabled Text widget 会完全禁用鼠标选区，用户点击拖动毫无反应。修复思路是"read-only but selectable"：保持 `state="normal"`，改为在控件级拦截所有写入类事件
+  - 新增 `_readonly_keypress`：`<Key>` 回调，只放行 `Ctrl+C / Ctrl+A / Ctrl+Insert / Ctrl+Home / Ctrl+End` 以及方向/翻页/Shift/Ctrl 等导航与修饰键，其他全部 `return "break"`
+  - 屏蔽 `<<Paste>>` 和 `<<Cut>>` 虚拟事件
+  - 删除 `_render_active` 里的 `state="normal"` / `state="disabled"` 成对调用（delete + insert 在 normal 态本来就 OK）
+  - 鼠标选区、Ctrl+C 复制恢复正常；用户仍然无法通过键盘编辑正文
+- **注意**：单实例架构下 `md-reader.cmd` 只把路径转交给已在运行的窗口，不会重载 Python 代码，升级后需要手动关闭现有 MD Reader 再重新打开
+
 ## [0.4.6] - 2026-04-14
 
 ### 新增
