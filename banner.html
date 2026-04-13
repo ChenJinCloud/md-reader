@@ -218,33 +218,74 @@
 
   /* ───── Right: text side ───── */
   .text-side {
-    max-width: 460px;
+    max-width: 480px;
   }
   .app-name {
     font-family: 'Segoe UI', sans-serif;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 3px;
     text-transform: uppercase;
     color: #8B3A2F;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
   }
   .tagline {
-    font-size: 36px;
+    font-size: 34px;
     font-weight: bold;
     color: #2A231A;
-    line-height: 1.35;
-    margin-bottom: 22px;
+    line-height: 1.32;
+    margin-bottom: 18px;
   }
   .tagline em {
     font-style: normal;
     color: #8B3A2F;
   }
+  /* Agent → Reader flow strip: visual proof of "zero friction". */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 12px;
+  }
+  .flow .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 11px;
+    background: #ECE1C3;
+    border: 1px solid #DCCEB0;
+    border-radius: 999px;
+    color: #3C3328;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .flow .chip.accent {
+    background: #8B3A2F;
+    border-color: #8B3A2F;
+    color: #F3EBD6;
+  }
+  .flow .arrow {
+    color: #8B3A2F;
+    font-weight: bold;
+    font-size: 14px;
+  }
+  .flow .zero {
+    color: #8A7C66;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-left: 2px;
+  }
   .subtitle {
     font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    font-size: 14px;
+    font-size: 13.5px;
     color: #6A5D4A;
-    line-height: 1.75;
+    line-height: 1.8;
+  }
+  .subtitle strong {
+    color: #3C3328;
+    font-weight: 600;
   }
   .themes {
     display: flex;
@@ -326,14 +367,20 @@
 
     <!-- Text side -->
     <div class="text-side">
-      <div class="app-name">MD Reader</div>
+      <div class="app-name">MD Reader · Agent 时代</div>
       <div class="tagline">
-        AI 写的 Markdown，<br>读它像翻<em>一张纸</em>。
+        AI 写完，<br><em>一张纸</em>就翻到你面前。
+      </div>
+      <div class="flow">
+        <span class="chip">Claude Code</span>
+        <span class="arrow">→</span>
+        <span class="chip accent">MD Reader</span>
+        <span class="zero">0 点击</span>
       </div>
       <div class="subtitle">
-        Agent 在写 · Everything 搜 · 回车就读<br>
-        不开 IDE · 不开浏览器 · 纸面阅读<br>
-        Python + tkinter · Windows
+        <strong>0 点击</strong>：Claude Code 写完，窗口自己弹出<br>
+        <strong>0 切换</strong>：Everything 搜到，双击直接渲染<br>
+        <strong>0 摩擦</strong>：不开 IDE · 不开浏览器 · 不开仓库
       </div>
       <div class="themes">
         <div class="theme-dot" style="background: #F3EBD6"></div>
