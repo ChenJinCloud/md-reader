@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+  }
+
+  .banner {
+    width: 1260px;
+    height: 540px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #F0E3BC;
+    background-image: linear-gradient(135deg, #F8F2DF 0%, #E8D9B3 100%);
+    overflow: hidden;
+  }
+
+  .container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 52px;
+  }
+
+  /* ───── Left: mock MD Reader window ───── */
+  .window {
+    width: 460px;
+    background: #F3EBD6;
+    border: 1px solid #C9B98F;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(60,40,16,0.18),
+                0 2px 6px rgba(60,40,16,0.08);
+    overflow: hidden;
+    flex-shrink: 0;
+    /* fake paper grain via noise texture (SVG data URI) */
+    background-image:
+      radial-gradient(ellipse at 30% 20%, rgba(60,51,40,0.06) 0, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, rgba(60,51,40,0.05) 0, transparent 60%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.20 0 0 0 0 0.16 0 0 0 0.22 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-blend-mode: multiply;
+  }
+
+  .topbar {
+    background: #ECE1C3;
+    padding: 11px 16px 10px;
+    display: flex;
+    align-items: center;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 10px;
+    color: #8A7C66;
+    border-bottom: 1px solid #DCCEB0;
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    background: #8B3A2F;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .topbar-title { font-size: 10px; }
+  .topbar-btns {
+    margin-left: auto;
+    display: flex;
+    gap: 11px;
+    color: #8A7C66;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  .topbar-btns .accent { color: #8B3A2F; }
+
+  .tabs {
+    background: #ECE1C3;
+    padding: 0 10px;
+    display: flex;
+    align-items: flex-end;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: 10px;
+    color: #8A7C66;
+    border-bottom: 1px solid #DCCEB0;
+  }
+  .tab {
+    padding: 6px 10px 6px 6px;
+    border-top: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tab.active {
+    background: #F3EBD6;
+    border-top-color: #8B3A2F;
+    color: #3C3328;
+  }
+  .tab-close { color: #BDAB85; font-size: 9px; }
+
+  .body-pane {
+    display: flex;
+    height: 280px;
+  }
+
+  .toc {
+    width: 120px;
+    background: #ECE1C3;
+    border-right: 1px solid #DCCEB0;
+    padding: 14px 12px;
+    font-family: 'Microsoft YaHei', sans-serif;
+    font-size: 9px;
+    color: #6A5D4A;
+    line-height: 1.9;
+  }
+  .toc-h1 { font-weight: bold; color: #2A231A; margin-top: 4px; }
+  .toc-h2 { padding-left: 8px; color: #3C3328; }
+  .toc-h3 { padding-left: 16px; color: #8A7C66; font-size: 8px; }
+
+  .body {
+    flex: 1;
+    padding: 22px 28px;
+    font-family: 'Georgia', serif;
+    color: #3C3328;
+    overflow: hidden;
+  }
+  .h1 {
+    font-size: 20px;
+    font-weight: bold;
+    color: #2A231A;
+    margin-bottom: 10px;
+    line-height: 1.2;
+  }
+  .p {
+    font-size: 11px;
+    line-height: 1.65;
+    margin-bottom: 8px;
+  }
+  .h2 {
+    font-size: 14px;
+    font-weight: bold;
+    color: #2A231A;
+    margin: 10px 0 6px;
+  }
+  .code-inline {
+    font-family: 'Consolas', monospace;
+    font-size: 10px;
+    background: #E4D7B5;
+    padding: 0 4px;
+    border-radius: 2px;
+  }
+  .list {
+    font-size: 11px;
+    line-height: 1.8;
+    padding-left: 4px;
+  }
+  .list li {
+    list-style: none;
+    position: relative;
+    padding-left: 14px;
+  }
+  .list li::before {
+    content: "·";
+    position: absolute;
+    left: 4px;
+    color: #8A7C66;
+    font-weight: bold;
+  }
+
+  /* ───── Right: text side ───── */
+  .text-side {
+    max-width: 460px;
+  }
+  .app-name {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #8B3A2F;
+    margin-bottom: 18px;
+  }
+  .tagline {
+    font-size: 36px;
+    font-weight: bold;
+    color: #2A231A;
+    line-height: 1.35;
+    margin-bottom: 22px;
+  }
+  .tagline em {
+    font-style: normal;
+    color: #8B3A2F;
+  }
+  .subtitle {
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    color: #6A5D4A;
+    line-height: 1.75;
+  }
+  .themes {
+    display: flex;
+    gap: 10px;
+    margin-top: 28px;
+    align-items: center;
+  }
+  .theme-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(60,40,16,0.15);
+    box-shadow: 0 1px 3px rgba(60,40,16,0.12);
+  }
+  .theme-label {
+    margin-left: 8px;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 11px;
+    color: #8A7C66;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+  <div class="banner">
+  <div class="container">
+    <!-- Window mockup -->
+    <div class="window">
+      <div class="topbar">
+        <div class="dot"></div>
+        <span class="topbar-title">MD Reader</span>
+        <div class="topbar-btns">
+          <span>13</span>
+          <span>Parchment</span>
+          <span>↻</span>
+          <span class="accent">✎</span>
+          <span class="accent">☰</span>
+          <span>□</span>
+          <span>✕</span>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab active">README.md<span class="tab-close">✕</span></div>
+        <div class="tab">CHANGELOG.md<span class="tab-close">✕</span></div>
+        <div class="tab">notes.md<span class="tab-close">✕</span></div>
+      </div>
+      <div class="body-pane">
+        <div class="toc">
+          <div class="toc-h1">MD Reader</div>
+          <div class="toc-h2">解决的问题</div>
+          <div class="toc-h2">特性</div>
+          <div class="toc-h3">纸质主题</div>
+          <div class="toc-h3">分屏编辑</div>
+          <div class="toc-h2">快速启动</div>
+          <div class="toc-h2">License</div>
+        </div>
+        <div class="body">
+          <div class="h1">MD Reader</div>
+          <div class="p">一个桌面原生的 Markdown 阅读器。让文字<br>回到一张纸上，而不是浏览器标签页里。</div>
+          <div class="h2">特性</div>
+          <ul class="list">
+            <li>五套纸质主题 · 颗粒纹理</li>
+            <li>多标签 · TOC 可调宽度</li>
+            <li><span class="code-inline">Ctrl+E</span> 分屏编辑 · 实时双向同步</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Text side -->
+    <div class="text-side">
+      <div class="app-name">MD Reader</div>
+      <div class="tagline">
+        双击 .md，<br>得到<em>一张纸</em>。
+      </div>
+      <div class="subtitle">
+        Everything 搜到 · 回车就读<br>
+        不开 IDE · 不开浏览器 · 纸面阅读<br>
+        Python + tkinter · Windows
+      </div>
+      <div class="themes">
+        <div class="theme-dot" style="background: #F3EBD6"></div>
+        <div class="theme-dot" style="background: #FFFFFF"></div>
+        <div class="theme-dot" style="background: #EEE6D0"></div>
+        <div class="theme-dot" style="background: #E2E0D5"></div>
+        <div class="theme-dot" style="background: #22201E"></div>
+        <span class="theme-label">Parchment · Medium · Rice · Linen · Ink</span>
+      </div>
+    </div>
+  </div>
+  </div>
+</body>
+</html>
