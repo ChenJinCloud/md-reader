@@ -2,7 +2,7 @@
 
 # MD Reader
 
-![Banner](banner.jpg)
+![Banner](banner.png)
 
 > A minimal desktop Markdown reader for Windows — built to read the
 > `.md` files your AI coding agents keep generating, without opening

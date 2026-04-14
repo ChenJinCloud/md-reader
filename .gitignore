@@ -19,8 +19,8 @@ dist/*
 # Screen recordings
 *.mp4
 
-# Banner working files (ship the JPG, not the intermediate PNG or previews)
-banner.png
+# Banner working files (banner.png is now the shipped artifact; only
+# ignore preview scratch variants)
 banner-preview.*
 
 # Test scratch files

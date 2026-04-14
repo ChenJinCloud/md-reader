@@ -2,6 +2,9 @@
 <html>
 <head>
 <meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Cormorant+SC:wght@500;600&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -11,7 +14,11 @@
   }
 
   body {
-    font-family: 'Georgia', 'Times New Roman', serif;
+    /* Default copy font: IM Fell English — a revival of a 17th-century
+       Oxford type (John Fell). Reads as an "old printed letter" without
+       the illegibility of blackletter. Georgia is the screen-safe
+       fallback if Google Fonts fails to load. */
+    font-family: 'IM Fell English', 'Georgia', 'Times New Roman', serif;
   }
 
   .banner {
@@ -20,10 +27,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Pure Parchment theme palette — same bg the app uses, with a very
-       subtle diagonal gradient to its own code_bg shade for depth. */
+    /* Flat Parchment — exactly what the real app paints. The same
+       discrete-pixel stipple texture as the mock window below, so
+       the whole banner reads as one continuous sheet of parchment
+       with the window floating on top via box-shadow, not via a
+       differently-coloured backdrop. */
     background-color: #F3EBD6;
-    background-image: linear-gradient(135deg, #F3EBD6 0%, #E4D7B5 100%);
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><filter id='d'><feTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='1' seed='11' stitchTiles='stitch'/><feComponentTransfer><feFuncA type='discrete' tableValues='0 0 0 0 0 0 0 1 1'/></feComponentTransfer><feColorMatrix values='0 0 0 0 0.89 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 1 0'/></filter><rect width='32' height='32' filter='url(%23d)'/></svg>");
+    background-repeat: repeat;
     overflow: hidden;
   }
 
@@ -37,21 +49,27 @@
   /* ───── Left: mock MD Reader window ───── */
   .window {
     width: 460px;
-    background: #F3EBD6;
+    background-color: #F3EBD6;
     border: 1px solid #C9B98F;
     border-radius: 14px;
-    /* Stronger shadow since the banner bg is the same Parchment color */
-    box-shadow: 0 20px 56px rgba(60,40,16,0.28),
-                0 6px 18px rgba(60,40,16,0.14),
-                0 1px 2px rgba(60,40,16,0.10);
+    /* Banner bg is the same Parchment + same stipple, so the window
+       needs a meaty shadow to visibly float above the sheet. */
+    box-shadow: 0 22px 60px rgba(60,40,16,0.32),
+                0 8px 20px rgba(60,40,16,0.18),
+                0 1px 2px rgba(60,40,16,0.12);
     overflow: hidden;
     flex-shrink: 0;
-    /* subtle paper grain via SVG noise */
+    /* Paper grain — discrete-pixel stipple matching the real app.
+       The real md-reader generates a 32×32 XBM bitmap seeded at
+       startup: ~22% of pixels are "speck" color `_blend_hex(bg, fg,
+       0.09)` ≈ #E3DBC6, the rest are bg #F3EBD6. We replicate the
+       visual character with SVG feTurbulence thresholded through a
+       feFuncA discrete step function, then color-mapped to the
+       speck RGB. Result is crisp pixelated dither, not smooth
+       watercolor noise. */
     background-image:
-      radial-gradient(ellipse at 30% 20%, rgba(60,51,40,0.06) 0, transparent 60%),
-      radial-gradient(ellipse at 80% 80%, rgba(60,51,40,0.05) 0, transparent 60%),
-      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.20 0 0 0 0 0.16 0 0 0 0.22 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    background-blend-mode: multiply;
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><filter id='d'><feTurbulence type='fractalNoise' baseFrequency='1.8' numOctaves='1' seed='11' stitchTiles='stitch'/><feComponentTransfer><feFuncA type='discrete' tableValues='0 0 0 0 0 0 0 1 1'/></feComponentTransfer><feColorMatrix values='0 0 0 0 0.89 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 1 0'/></filter><rect width='32' height='32' filter='url(%23d)'/></svg>");
+    background-repeat: repeat;
   }
 
   .topbar {
@@ -89,6 +107,17 @@
     height: 11px;
   }
   .topbar-btns .accent { color: #8B3A2F; }
+  /* Translate-mode button — defaults to `原` (source mode), rendered
+     in the secondary chrome color just like the real app does when
+     not in bilingual/zh mode. A CJK font stack keeps the glyph
+     looking correct on screenshot machines without the app's
+     Microsoft YaHei bundled. */
+  .topbar-btns .trans-btn {
+    font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC',
+                 sans-serif;
+    font-size: 11px;
+    color: #8A7C66;
+  }
 
   .tabs {
     background: #ECE1C3;
@@ -136,6 +165,10 @@
   .body {
     flex: 1;
     padding: 22px 28px;
+    /* Georgia — matches what the real app ships, so the mock window
+       reads as an authentic product shot. The letter aesthetic
+       lives on the right side of the banner; this side stays
+       faithful to the actual UI. */
     font-family: 'Georgia', serif;
     color: #3C3328;
     overflow: hidden;
@@ -216,96 +249,138 @@
     margin-left: 1px;
   }
 
-  /* ───── Right: text side ───── */
+  /* ─────────────────────────────────────────────────────────
+     Right side — the "copy" column. Restyled as if quoted from
+     an 18th-century printed letter. Same layout as before, only
+     the typography and ornaments change. Everything on this side
+     uses IM Fell English for body, Cormorant SC for the small-cap
+     masthead, and italic flourishes in place of sans-serif bold.
+     ───────────────────────────────────────────────────────── */
   .text-side {
-    max-width: 480px;
+    max-width: 500px;
+    color: #3c2a18;
   }
   .app-name {
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 12px;
+    font-family: 'Cormorant SC', 'IM Fell English SC', serif;
+    font-size: 16px;
     font-weight: 600;
-    letter-spacing: 3px;
+    letter-spacing: 4px;
     text-transform: uppercase;
     color: #8B3A2F;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(139,58,47,0.35);
+    display: inline-block;
   }
   .tagline {
-    font-size: 34px;
-    font-weight: bold;
-    color: #2A231A;
+    font-family: 'IM Fell English', 'Georgia', serif;
+    font-size: 36px;
+    font-weight: 400;  /* Fell is already a dense serif — bold muddles it */
+    color: #2a1d0d;
     line-height: 1.32;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
+    text-shadow: 0 1px 0 rgba(255,245,215,0.6);
   }
   .tagline em {
-    font-style: normal;
+    font-style: italic;
     color: #8B3A2F;
+  }
+  /* Fleuron divider — a little 17th-century printer's ornament to
+     set the tagline off from the flow strip. */
+  .flourish {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 16px;
+    color: #8B3A2F;
+  }
+  .flourish .line {
+    flex: 0 0 72px;
+    height: 1px;
+    background: linear-gradient(90deg,
+      rgba(139,58,47,0.8) 0%,
+      rgba(139,58,47,0.3) 100%);
+  }
+  .flourish .ornament {
+    font-size: 18px;
+    line-height: 1;
+    font-family: 'IM Fell English', serif;
   }
   /* Agent → Reader flow strip: visual proof of "zero friction". */
   .flow {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 20px;
-    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    font-size: 12px;
+    margin-bottom: 22px;
+    font-family: 'IM Fell English SC', 'Cormorant SC', serif;
+    font-size: 14px;
   }
   .flow .chip {
     display: inline-flex;
     align-items: center;
-    padding: 5px 11px;
+    padding: 6px 13px;
     background: #ECE1C3;
-    border: 1px solid #DCCEB0;
-    border-radius: 999px;
-    color: #3C3328;
-    font-weight: 600;
-    letter-spacing: 0.5px;
+    border: 1px solid #C9B98F;
+    border-radius: 2px;  /* squared corners feel more period */
+    color: #3c2a18;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-size: 11px;
   }
   .flow .chip.accent {
     background: #8B3A2F;
-    border-color: #8B3A2F;
+    border-color: #6f1c10;
     color: #F3EBD6;
+    box-shadow: 0 1px 0 rgba(255,235,200,0.15) inset,
+                0 1px 2px rgba(80,20,10,0.3);
   }
   .flow .arrow {
     color: #8B3A2F;
-    font-weight: bold;
-    font-size: 14px;
+    font-family: 'IM Fell English', serif;
+    font-size: 20px;
+    font-style: italic;
   }
   .flow .zero {
-    color: #8A7C66;
-    font-size: 10px;
-    letter-spacing: 1px;
+    color: #6a4a22;
+    font-size: 11px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
     margin-left: 2px;
+    font-family: 'Cormorant SC', serif;
+    font-style: italic;
   }
   .subtitle {
-    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    font-size: 13.5px;
-    color: #6A5D4A;
+    font-family: 'IM Fell English', 'Georgia', serif;
+    font-size: 15px;
+    color: #5a4226;
     line-height: 1.8;
   }
   .subtitle strong {
-    color: #3C3328;
+    color: #2a1d0d;
     font-weight: 600;
+    font-style: italic;  /* letter-style emphasis */
   }
   .themes {
     display: flex;
     gap: 10px;
-    margin-top: 28px;
+    margin-top: 26px;
     align-items: center;
   }
   .theme-dot {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    border: 1px solid rgba(60,40,16,0.15);
-    box-shadow: 0 1px 3px rgba(60,40,16,0.12);
+    border: 1px solid rgba(60,40,16,0.2);
+    box-shadow: 0 1px 3px rgba(60,40,16,0.18);
   }
   .theme-label {
     margin-left: 8px;
-    font-family: 'Segoe UI', sans-serif;
-    font-size: 11px;
-    color: #8A7C66;
-    letter-spacing: 1px;
+    font-family: 'IM Fell English SC', 'Cormorant SC', serif;
+    font-size: 12px;
+    color: #6a4a22;
+    letter-spacing: 1.5px;
+    font-variant: small-caps;
   }
 </style>
 </head>
@@ -320,6 +395,7 @@
         <div class="topbar-btns">
           <span class="accent">☰</span>
           <span class="accent btn-icon"><svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12.3 2.1l1.6 1.6c.2.2.2.5 0 .7l-1.3 1.3-2.3-2.3 1.3-1.3c.2-.2.5-.2.7 0zM9.6 4l2.3 2.3-7.1 7.1H2.5v-2.3L9.6 4z"/></svg></span>
+          <span class="trans-btn">原</span>
           <span>↻</span>
           <span>Parchment</span>
           <span>A−</span>
@@ -367,20 +443,25 @@
 
     <!-- Text side -->
     <div class="text-side">
-      <div class="app-name">MD Reader · for the agent era</div>
+      <div class="app-name">MD Reader &middot; for the agent era</div>
       <div class="tagline">
-        AI finishes writing.<br><em>A sheet of paper</em> is already in front of you.
+        AI finishes writing.<br><em>A sheet of paper</em> is already before thee.
+      </div>
+      <div class="flourish">
+        <span class="line"></span>
+        <span class="ornament">&#10086;</span>
+        <span class="line"></span>
       </div>
       <div class="flow">
         <span class="chip">Claude Code</span>
-        <span class="arrow">→</span>
+        <span class="arrow">&rarr;</span>
         <span class="chip accent">MD Reader</span>
         <span class="zero">0 clicks</span>
       </div>
       <div class="subtitle">
-        <strong>0 clicks</strong>: Claude Code finishes, the window pops up on its own<br>
-        <strong>0 switches</strong>: Everything hit → enter → it renders<br>
-        <strong>0 friction</strong>: no IDE · no browser · no vault
+        <strong>0 clicks</strong> &mdash; the agent finisheth writing, and the window openeth of its own accord<br>
+        <strong>0 switches</strong> &mdash; Everything hit &rarr; enter &rarr; it rendereth<br>
+        <strong>0 friction</strong> &mdash; no IDE, nor browser, nor vault
       </div>
       <div class="themes">
         <div class="theme-dot" style="background: #F3EBD6"></div>

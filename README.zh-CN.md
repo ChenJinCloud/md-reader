@@ -2,7 +2,7 @@
 
 # MD Reader
 
-![Banner](banner.jpg)
+![Banner](banner.png)
 
 > 为了看 Claude Code 写的 Markdown 文档，做的一个桌面阅读器（含 Claude Code Skill）。
 
@@ -132,8 +132,8 @@ pythonw md-reader.pyw "path\to\file.md"
 ├── test-sample.md             # 测试文档，覆盖常用 GFM 语法
 ├── test-sample-en.md          # 英文测试文档，用于验证翻译 / 中英对照
 ├── themes/                    # 可选，放自定义主题 JSON
-├── banner.jpg                 # 项目宣传图
-├── banner.html                # banner 源文件
+├── banner.png                 # 项目宣传图（从 banner.html 渲染导出）
+├── banner.html                # banner 源文件（IM Fell English 书信体 + 真实 app stipple 质感）
 ├── README.md                  # English README
 ├── README.zh-CN.md            # 本文件
 ├── AGENTS.md                  # AI agent（Codex CLI / Cursor / Aider 等）调用规则
