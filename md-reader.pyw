@@ -19,6 +19,9 @@ import json
 import time
 import glob
 import faulthandler
+import unicodedata
+
+LARGE_DOC_CHARS = 60000
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 STATE_FILE = os.path.join(SCRIPT_DIR, ".md-reader-state.json")
@@ -785,6 +788,15 @@ class MDReader:
                         foreground=self.t("accent"))
         t.tag_configure("task_done_text", font=(SERIF, body, "overstrike"),
                         foreground=self.t("secondary"))
+        t.tag_configure("table_head", font=(MONO, body, "bold"),
+                        background=self.t("topbar"), foreground=self.t("title"),
+                        spacing1=4, spacing3=2, lmargin1=4, lmargin2=4)
+        t.tag_configure("table_row", font=(MONO, body),
+                        foreground=self.t("fg"),
+                        spacing1=1, spacing3=1, lmargin1=4, lmargin2=4)
+        t.tag_configure("table_row_alt", font=(MONO, body),
+                        background=self.t("code_bg"), foreground=self.t("fg"),
+                        spacing1=1, spacing3=1, lmargin1=4, lmargin2=4)
 
     # ── Tab bar ───────────────────────────────────────
     def _populate_tabs(self):
@@ -984,14 +996,26 @@ class MDReader:
                 self.root.after_cancel(self._edit_after_id)
             except Exception:
                 pass
-        self._edit_after_id = self.root.after(250, self._live_render_from_edit)
+        # Scale debounce with document size: on large docs a full re-render
+        # is expensive, so coalesce more aggressively to keep typing smooth.
+        try:
+            doc_chars = len(self.edit_text.get("1.0", "end-1c"))
+        except Exception:
+            doc_chars = 0
+        if doc_chars > LARGE_DOC_CHARS:
+            live_ms = 900
+        elif doc_chars > LARGE_DOC_CHARS // 2:
+            live_ms = 500
+        else:
+            live_ms = 250
+        self._edit_after_id = self.root.after(live_ms, self._live_render_from_edit)
         # Debounced auto-save back to file (slower — coalesce keystrokes).
         if self._edit_save_after_id is not None:
             try:
                 self.root.after_cancel(self._edit_save_after_id)
             except Exception:
                 pass
-        self._edit_save_after_id = self.root.after(900, self._auto_save_edit)
+        self._edit_save_after_id = self.root.after(max(900, live_ms + 200), self._auto_save_edit)
 
     def _auto_save_edit(self):
         self._edit_save_after_id = None
@@ -1222,200 +1246,17 @@ class MDReader:
         self._cur_headings = []
         self.text.delete("1.0", "end")
         self._render(src)
-        # Paint the paper-grain dither across everything. tag_lower pushes
-        # it to lowest priority so p/h1/code/etc. override on top.
-        try:
-            self.text.tag_add("paper", "1.0", "end")
-            self.text.tag_lower("paper")
-        except Exception:
-            pass
+        # Skip paper-grain stipple on large docs — bgstipple redraw is the
+        # main scroll-jank source. Small docs keep the texture.
+        if len(src) < LARGE_DOC_CHARS:
+            try:
+                self.text.tag_add("paper", "1.0", "end")
+                self.text.tag_lower("paper")
+            except Exception:
+                pass
         tab["headings"] = self._cur_headings
         self._populate_toc()
-        # Restore scroll
-        self.root.update_idletasks()
         self.text.yview_moveto(tab.get("scroll", 0.0))
-
-    def _render(self, md):
-        lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        i = 0
-        n = len(lines)
-        in_code = False
-        code_buf = []
-
-        special_re = re.compile(r'^(#{1,6}\s|```|>\s|\s*[-*+]\s|\s*\d+\.\s|---+\s*$|\*\*\*\s*$|___\s*$)')
-
-        while i < n:
-            line = lines[i]
-
-            # Fenced code block
-            m = re.match(r'^```(\w*)\s*$', line)
-            if m:
-                if not in_code:
-                    in_code = True
-                    code_buf = []
-                else:
-                    in_code = False
-                    self.text.insert("end", "\n".join(code_buf) + "\n", "codeblock")
-                i += 1
-                continue
-            if in_code:
-                code_buf.append(line)
-                i += 1
-                continue
-
-            stripped = line.strip()
-
-            # Horizontal rule
-            if re.match(r'^(-{3,}|\*{3,}|_{3,})\s*$', stripped):
-                self.text.insert("end", "─" * 36 + "\n", "hr_line")
-                i += 1
-                continue
-
-            # Heading
-            m = re.match(r'^(#{1,4})\s+(.*)$', line)
-            if m:
-                level = len(m.group(1))
-                title = m.group(2).strip()
-                tag = f"h{level}"
-                if level <= 3:
-                    mark = f"hd_{len(self._cur_headings)}"
-                    self.text.mark_set(mark, "end-1c")
-                    self.text.mark_gravity(mark, "left")
-                    self._cur_headings.append({"level": level, "title": title, "mark": mark})
-                self.text.insert("end", title + "\n", tag)
-                i += 1
-                continue
-
-            # Blockquote (gather consecutive)
-            if stripped.startswith(">"):
-                buf = []
-                while i < n and lines[i].strip().startswith(">"):
-                    buf.append(re.sub(r'^\s*>\s?', '', lines[i]))
-                    i += 1
-                self._insert_inline(" ".join(s.strip() for s in buf if s.strip()), ["quote"])
-                self.text.insert("end", "\n", "quote")
-                continue
-
-            # Task list
-            m = re.match(r'^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$', line)
-            if m:
-                indent, mark, content = m.group(1), m.group(2), m.group(3)
-                pad = "    " * (len(indent) // 2)
-                box = "\u2611  " if mark.lower() == "x" else "\u2610  "
-                self.text.insert("end", pad + box, "task")
-                if mark.lower() == "x":
-                    self.text.insert("end", content + "\n", "task_done_text")
-                else:
-                    self._insert_inline(content, ["p"])
-                    self.text.insert("end", "\n", "p")
-                i += 1
-                continue
-
-            # Unordered list
-            m = re.match(r'^(\s*)[-*+]\s+(.*)$', line)
-            if m:
-                indent, content = m.group(1), m.group(2)
-                pad = "    " * (len(indent) // 2)
-                self.text.insert("end", pad + "•  ", "listmark")
-                self._insert_inline(content, ["p"])
-                self.text.insert("end", "\n", "p")
-                i += 1
-                continue
-
-            # Ordered list
-            m = re.match(r'^(\s*)(\d+)\.\s+(.*)$', line)
-            if m:
-                indent, num, content = m.group(1), m.group(2), m.group(3)
-                pad = "    " * (len(indent) // 2)
-                self.text.insert("end", f"{pad}{num}.  ", "listmark")
-                self._insert_inline(content, ["p"])
-                self.text.insert("end", "\n", "p")
-                i += 1
-                continue
-
-            # GFM table
-            if "|" in line and i + 1 < n:
-                sep = lines[i + 1].strip()
-                if re.match(r'^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$', sep):
-                    rows = []
-                    j = i + 2
-                    while j < n and "|" in lines[j] and lines[j].strip():
-                        rows.append(lines[j])
-                        j += 1
-                    self._render_table(line, lines[i + 1], rows)
-                    i = j
-                    continue
-
-            # Empty line
-            if not stripped:
-                self.text.insert("end", "\n")
-                i += 1
-                continue
-
-            # Paragraph
-            para = [line]
-            j = i + 1
-            while j < n and lines[j].strip() and not special_re.match(lines[j]) and "|" not in lines[j]:
-                para.append(lines[j])
-                j += 1
-            self._insert_inline(" ".join(s.strip() for s in para), ["p"])
-            self.text.insert("end", "\n", "p")
-            i = j
-
-    def _render_table(self, header_line, sep_line, row_lines):
-        def split_cells(s):
-            s = s.strip()
-            if s.startswith("|"):
-                s = s[1:]
-            if s.endswith("|"):
-                s = s[:-1]
-            return [c.strip() for c in s.split("|")]
-
-        headers = split_cells(header_line)
-        sep_cells = split_cells(sep_line)
-        rows = [split_cells(r) for r in row_lines]
-        ncols = len(headers)
-
-        aligns = []
-        for s in sep_cells[:ncols]:
-            left = s.startswith(":")
-            right = s.endswith(":")
-            if left and right:
-                aligns.append("center")
-            elif right:
-                aligns.append("e")
-            else:
-                aligns.append("w")
-        while len(aligns) < ncols:
-            aligns.append("w")
-
-        body = self.fs("body")
-        outer = tk.Frame(self.text, bg=self.t("hr"))
-
-        for col, cell in enumerate(headers):
-            justify = "left" if aligns[col] == "w" else ("right" if aligns[col] == "e" else "center")
-            lbl = tk.Label(
-                outer, text=cell, font=(SANS, body, "bold"),
-                bg=self.t("topbar"), fg=self.t("title"),
-                padx=12, pady=7, anchor=aligns[col], justify=justify,
-            )
-            lbl.grid(row=0, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
-
-        for ri, row in enumerate(rows, start=1):
-            row_bg = self.t("bg") if ri % 2 == 1 else self.t("code_bg")
-            for col in range(ncols):
-                cell = row[col] if col < len(row) else ""
-                justify = "left" if aligns[col] == "w" else ("right" if aligns[col] == "e" else "center")
-                lbl = tk.Label(
-                    outer, text=cell, font=(SERIF, body),
-                    bg=row_bg, fg=self.t("fg"),
-                    padx=12, pady=6, anchor=aligns[col], justify=justify,
-                )
-                lbl.grid(row=ri, column=col, sticky="nsew", padx=(0, 1), pady=(0, 1))
-
-        self.text.insert("end", "\n")
-        self.text.window_create("end", window=outer, padx=4, pady=6, align="baseline")
-        self.text.insert("end", "\n\n")
 
     _inline_re = re.compile(
         r'(`[^`\n]+`)'
@@ -1426,27 +1267,259 @@ class MDReader:
         r'|(\[[^\]\n]+\]\([^)\n]+\))'
     )
 
-    def _insert_inline(self, text, base):
-        pos = 0
-        for m in self._inline_re.finditer(text):
-            if m.start() > pos:
-                self.text.insert("end", text[pos:m.start()], tuple(base))
-            seg = m.group(0)
-            if m.group(1):
-                self.text.insert("end", " " + seg[1:-1] + " ", tuple(base + ["code"]))
-            elif m.group(2) or m.group(3):
-                self.text.insert("end", seg[2:-2], tuple(base + ["bold"]))
-            elif m.group(4):
-                self.text.insert("end", seg[1:-1], tuple(base + ["italic"]))
-            elif m.group(5):
-                self.text.insert("end", seg[2:-2], tuple(base + ["strike"]))
-            elif m.group(6):
-                lm = re.match(r'\[([^\]]+)\]\(([^)]+)\)', seg)
-                if lm:
-                    self.text.insert("end", lm.group(1), tuple(base + ["link"]))
-            pos = m.end()
-        if pos < len(text):
-            self.text.insert("end", text[pos:], tuple(base))
+    @staticmethod
+    def _display_width(s):
+        w = 0
+        for ch in s:
+            ea = unicodedata.east_asian_width(ch)
+            w += 2 if ea in ("W", "F") else 1
+        return w
+
+    @staticmethod
+    def _pad_cell(cell, width, align):
+        cur = MDReader._display_width(cell)
+        fill = max(0, width - cur)
+        if align == "r":
+            return " " * fill + cell
+        if align == "c":
+            l = fill // 2
+            return " " * l + cell + " " * (fill - l)
+        return cell + " " * fill
+
+    def _render(self, md):
+        """Build the entire body as one string + a list of tag spans, then
+        do a single insert and batched tag_add. Keeps Tk round-trips O(#spans)
+        instead of O(#segments), which is the big win on large docs."""
+        lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        n = len(lines)
+
+        parts = []            # text chunks to concatenate
+        spans = []            # (start_char, end_char, tag_or_tuple)
+        cursor = [0]          # running char offset
+        heading_todo = []     # (char_offset, mark_key)
+
+        def emit(text, tag=None):
+            if not text:
+                return
+            start = cursor[0]
+            parts.append(text)
+            cursor[0] = start + len(text)
+            if tag:
+                spans.append((start, cursor[0], tag))
+
+        inline_re = self._inline_re
+
+        def emit_inline(text, base):
+            base_t = tuple(base) if not isinstance(base, tuple) else base
+            pos = 0
+            for m in inline_re.finditer(text):
+                if m.start() > pos:
+                    emit(text[pos:m.start()], base_t)
+                seg = m.group(0)
+                if m.group(1):
+                    emit(" " + seg[1:-1] + " ", base_t + ("code",))
+                elif m.group(2) or m.group(3):
+                    emit(seg[2:-2], base_t + ("bold",))
+                elif m.group(4):
+                    emit(seg[1:-1], base_t + ("italic",))
+                elif m.group(5):
+                    emit(seg[2:-2], base_t + ("strike",))
+                elif m.group(6):
+                    lm = re.match(r'\[([^\]]+)\]\(([^)]+)\)', seg)
+                    if lm:
+                        emit(lm.group(1), base_t + ("link",))
+                pos = m.end()
+            if pos < len(text):
+                emit(text[pos:], base_t)
+
+        def emit_table(header_line, sep_line, row_lines):
+            def split_cells(s):
+                s = s.strip()
+                if s.startswith("|"):
+                    s = s[1:]
+                if s.endswith("|"):
+                    s = s[:-1]
+                return [c.strip() for c in s.split("|")]
+
+            headers = split_cells(header_line)
+            sep_cells = split_cells(sep_line)
+            rows = [split_cells(r) for r in row_lines]
+            ncols = len(headers)
+
+            aligns = []
+            for s in sep_cells[:ncols]:
+                left = s.startswith(":")
+                right = s.endswith(":")
+                if left and right:
+                    aligns.append("c")
+                elif right:
+                    aligns.append("r")
+                else:
+                    aligns.append("l")
+            while len(aligns) < ncols:
+                aligns.append("l")
+
+            widths = [self._display_width(h) for h in headers]
+            for row in rows:
+                for c in range(ncols):
+                    cell = row[c] if c < len(row) else ""
+                    cw = self._display_width(cell)
+                    if cw > widths[c]:
+                        widths[c] = cw
+
+            def fmt(cells):
+                out = []
+                for c in range(ncols):
+                    cell = cells[c] if c < len(cells) else ""
+                    out.append(self._pad_cell(cell, widths[c], aligns[c]))
+                return "  ".join(out)
+
+            emit("\n")
+            emit(fmt(headers) + "\n", "table_head")
+            for ri, row in enumerate(rows):
+                emit(fmt(row) + "\n", "table_row_alt" if ri % 2 else "table_row")
+            emit("\n")
+
+        i = 0
+        in_code = False
+        code_buf = []
+        special_re = re.compile(r'^(#{1,6}\s|```|>\s|\s*[-*+]\s|\s*\d+\.\s|---+\s*$|\*\*\*\s*$|___\s*$)')
+
+        while i < n:
+            line = lines[i]
+
+            m = re.match(r'^```(\w*)\s*$', line)
+            if m:
+                if not in_code:
+                    in_code = True
+                    code_buf = []
+                else:
+                    in_code = False
+                    emit("\n".join(code_buf) + "\n", "codeblock")
+                i += 1
+                continue
+            if in_code:
+                code_buf.append(line)
+                i += 1
+                continue
+
+            stripped = line.strip()
+
+            if re.match(r'^(-{3,}|\*{3,}|_{3,})\s*$', stripped):
+                emit("─" * 36 + "\n", "hr_line")
+                i += 1
+                continue
+
+            m = re.match(r'^(#{1,4})\s+(.*)$', line)
+            if m:
+                level = len(m.group(1))
+                title = m.group(2).strip()
+                tag = f"h{level}"
+                if level <= 3:
+                    mark_key = f"hd_{len(self._cur_headings)}"
+                    heading_todo.append((cursor[0], mark_key))
+                    self._cur_headings.append({"level": level, "title": title, "mark": mark_key})
+                emit(title + "\n", tag)
+                i += 1
+                continue
+
+            if stripped.startswith(">"):
+                buf = []
+                while i < n and lines[i].strip().startswith(">"):
+                    buf.append(re.sub(r'^\s*>\s?', '', lines[i]))
+                    i += 1
+                emit_inline(" ".join(s.strip() for s in buf if s.strip()), ("quote",))
+                emit("\n", "quote")
+                continue
+
+            m = re.match(r'^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$', line)
+            if m:
+                indent, mark, content = m.group(1), m.group(2), m.group(3)
+                pad = "    " * (len(indent) // 2)
+                box = "\u2611  " if mark.lower() == "x" else "\u2610  "
+                emit(pad + box, "task")
+                if mark.lower() == "x":
+                    emit(content + "\n", "task_done_text")
+                else:
+                    emit_inline(content, ("p",))
+                    emit("\n", "p")
+                i += 1
+                continue
+
+            m = re.match(r'^(\s*)[-*+]\s+(.*)$', line)
+            if m:
+                indent, content = m.group(1), m.group(2)
+                pad = "    " * (len(indent) // 2)
+                emit(pad + "•  ", "listmark")
+                emit_inline(content, ("p",))
+                emit("\n", "p")
+                i += 1
+                continue
+
+            m = re.match(r'^(\s*)(\d+)\.\s+(.*)$', line)
+            if m:
+                indent, num, content = m.group(1), m.group(2), m.group(3)
+                pad = "    " * (len(indent) // 2)
+                emit(f"{pad}{num}.  ", "listmark")
+                emit_inline(content, ("p",))
+                emit("\n", "p")
+                i += 1
+                continue
+
+            if "|" in line and i + 1 < n:
+                sep = lines[i + 1].strip()
+                if re.match(r'^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$', sep):
+                    rows = []
+                    j = i + 2
+                    while j < n and "|" in lines[j] and lines[j].strip():
+                        rows.append(lines[j])
+                        j += 1
+                    emit_table(line, lines[i + 1], rows)
+                    i = j
+                    continue
+
+            if not stripped:
+                emit("\n")
+                i += 1
+                continue
+
+            para = [line]
+            j = i + 1
+            while j < n and lines[j].strip() and not special_re.match(lines[j]) and "|" not in lines[j]:
+                para.append(lines[j])
+                j += 1
+            emit_inline(" ".join(s.strip() for s in para), ("p",))
+            emit("\n", "p")
+            i = j
+
+        # Single batch insert
+        big = "".join(parts)
+        if big:
+            self.text.insert("1.0", big)
+
+        # Merge adjacent same-tag spans to reduce tag_add calls
+        merged = []
+        for start, end, tag in spans:
+            if merged and merged[-1][2] == tag and merged[-1][1] == start:
+                prev = merged[-1]
+                merged[-1] = (prev[0], end, tag)
+            else:
+                merged.append((start, end, tag))
+
+        # Apply tags via char offsets
+        for start, end, tag in merged:
+            s_idx = f"1.0 + {start} chars"
+            e_idx = f"1.0 + {end} chars"
+            if isinstance(tag, tuple):
+                for tg in tag:
+                    self.text.tag_add(tg, s_idx, e_idx)
+            else:
+                self.text.tag_add(tag, s_idx, e_idx)
+
+        # Place heading marks
+        for off, mark_key in heading_todo:
+            self.text.mark_set(mark_key, f"1.0 + {off} chars")
+            self.text.mark_gravity(mark_key, "left")
 
     # ── Theme / size ─────────────────────────────────
     def _next_theme(self, e=None):

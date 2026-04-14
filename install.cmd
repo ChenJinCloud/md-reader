@@ -1,16 +1,17 @@
 @echo off
 rem ============================================================
-rem  MD Reader - register as .md handler (current user only)
+rem  MD Reader - register .exe as .md handler (current user only)
 rem
 rem  Why this script exists:
 rem  Windows 10/11's "Open With" dialog disables the "Always use
-rem  this app" checkbox when you point at a .cmd batch file — they
-rem  aren't proper Win32 apps. This script registers a ProgID
-rem  (MDReader.Markdown) under HKCU that points directly at
-rem  pythonw.exe + md-reader.pyw, which Windows recognizes as a
-rem  real app. After running, right-click any .md file → Open With
-rem  → Choose another app → MD Reader will appear, and the
-rem  "Always" checkbox will be enabled.
+rem  this app" checkbox for .cmd/.bat files — they aren't proper
+rem  Win32 apps. Earlier versions registered pythonw.exe + the
+rem  .pyw script, but once a stale UserChoice hash gets stuck
+rem  Windows refuses to accept that path either. The current
+rem  build ships a PyInstaller-made md-reader.exe and registers
+rem  a ProgID under HKCU pointing at that real PE executable.
+rem  After running, right-click any .md file → Open With → MD
+rem  Reader will appear and the "Always" checkbox is enabled.
 rem
 rem  All writes go under HKEY_CURRENT_USER. No admin required.
 rem  Reversible: run `install.cmd /uninstall` to remove.
@@ -19,53 +20,42 @@ rem ============================================================
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
-set "PYW=%ROOT%\md-reader.pyw"
+set "EXE=%ROOT%\dist\md-reader.exe"
 set "PROGID=MDReader.Markdown"
 
 if /i "%~1"=="/uninstall" goto uninstall
 
 rem ---------- Install ----------
-if not exist "%PYW%" (
-    echo ERROR: md-reader.pyw not found next to this script.
-    echo Expected: %PYW%
-    pause
-    exit /b 1
-)
-
-rem Find pythonw.exe
-set "PYTHONW="
-for /f "delims=" %%i in ('where pythonw.exe 2^>nul') do (
-    set "PYTHONW=%%i"
-    goto pyfound
-)
-:pyfound
-if "%PYTHONW%"=="" (
-    echo ERROR: pythonw.exe not found in PATH.
-    echo Install Python 3 from https://www.python.org/ and make sure
-    echo pythonw.exe is on PATH ^(the installer's "Add Python to PATH"
-    echo option does this^).
+if not exist "%EXE%" (
+    echo ERROR: md-reader.exe not found.
+    echo Expected: %EXE%
+    echo.
+    echo If you cloned from source, make sure the repo's dist\ folder
+    echo contains md-reader.exe. Rebuild with PyInstaller if needed:
+    echo   pyinstaller --onefile --windowed md-reader.pyw
     pause
     exit /b 1
 )
 
 echo Registering MD Reader...
-echo   ProgID  : %PROGID%
-echo   pythonw : %PYTHONW%
-echo   script  : %PYW%
+echo   ProgID : %PROGID%
+echo   exe    : %EXE%
 echo.
 
-rem ProgID friendly name
+rem ProgID friendly name + icon
 reg add "HKCU\Software\Classes\%PROGID%" /ve /d "Markdown Document" /f >nul
-reg add "HKCU\Software\Classes\%PROGID%\DefaultIcon" /ve /d "\"%PYTHONW%\",0" /f >nul
+reg add "HKCU\Software\Classes\%PROGID%\DefaultIcon" /ve /d "\"%EXE%\",0" /f >nul
 
-rem Open verb: pythonw.exe "<script>" "%1"
-reg add "HKCU\Software\Classes\%PROGID%\shell\open\command" /ve /d "\"%PYTHONW%\" \"%PYW%\" \"%%1\"" /f >nul
+rem Open verb: md-reader.exe "%1"
+reg add "HKCU\Software\Classes\%PROGID%\shell\open\command" /ve /d "\"%EXE%\" \"%%1\"" /f >nul
 
 rem Expose to the .md extension's Open-With list
 reg add "HKCU\Software\Classes\.md\OpenWithProgids" /v "%PROGID%" /t REG_NONE /f >nul
 
-rem Also register under Applications\pythonw.exe so it shows up nicely
-reg add "HKCU\Software\Classes\Applications\pythonw.exe\SupportedTypes" /v ".md" /t REG_SZ /d "" /f >nul
+rem Register under Applications\md-reader.exe so it appears in Open-With
+reg add "HKCU\Software\Classes\Applications\md-reader.exe\shell\open\command" /ve /d "\"%EXE%\" \"%%1\"" /f >nul
+reg add "HKCU\Software\Classes\Applications\md-reader.exe\SupportedTypes" /v ".md" /t REG_SZ /d "" /f >nul
+reg add "HKCU\Software\Classes\Applications\md-reader.exe\FriendlyAppName" /ve /d "MD Reader" /f >nul
 
 rem Notify shell to refresh icon/association cache
 powershell -NoProfile -Command ^
@@ -89,7 +79,7 @@ rem ---------- Uninstall ----------
 echo Unregistering MD Reader...
 reg delete "HKCU\Software\Classes\%PROGID%" /f >nul 2>&1
 reg delete "HKCU\Software\Classes\.md\OpenWithProgids" /v "%PROGID%" /f >nul 2>&1
-reg delete "HKCU\Software\Classes\Applications\pythonw.exe\SupportedTypes" /v ".md" /f >nul 2>&1
+reg delete "HKCU\Software\Classes\Applications\md-reader.exe" /f >nul 2>&1
 echo.
 echo Removed. Note: Windows may still remember "MD Reader" as a past
 echo choice in the Open-With dialog's history list — that's a separate

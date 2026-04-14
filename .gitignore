@@ -12,7 +12,8 @@ __pycache__/
 
 # PyInstaller build artifacts
 build/
-dist/
+dist/*
+!dist/md-reader.exe
 *.spec
 
 # Screen recordings

@@ -3,6 +3,28 @@
 本项目所有重要变更都记录在此文件中。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.8] - 2026-04-14
+
+### 变更
+
+- **分发方式从 `.cmd + pythonw + .pyw` 正式迁到 `dist\md-reader.exe`**
+  - PyInstaller `--onefile --windowed md-reader.pyw` 打出 ~10 MB 的单文件 PE exe
+  - `.gitignore` 调整：`dist/` 下除 `md-reader.exe` 外仍忽略，现在仓库直接带出这一份 exe，朋友 clone 即用，不需要本机装 Python
+  - `install.cmd` 重写：ProgID `MDReader.Markdown` 和 `Applications\md-reader.exe` 都指向真 PE exe，而不是 `pythonw.exe + .pyw`
+  - 背景：0.4.6 版本依赖 `pythonw.exe + .pyw` 路径，Win10/11 UserChoice 在某些机器上会 hash-lock 住无法写入；只有注册真 PE exe 才能在"打开方式"对话框稳定勾上"始终使用"
+  - `md-reader.cmd`（源码启动器）保留不变，用于开发时直接从 `.pyw` 启动
+
+### 优化
+
+- **大文档预览性能**：用户反馈"md 内容过多就卡"。定位到 5 个瓶颈并全部修复——
+  - **批量渲染**：`_render` 改为先在 Python 里拼纯文本 `parts` + 收集 `(start, end, tag)` span 列表，然后单次 `insert("1.0", big)` + 合并相邻同 tag span 后批量 `tag_add`（索引用 `1.0 + N chars` 形式）。Tk 往返从"每段一次 insert + 每段一次 tag"降到"每合并区间一次 tag_add"。heading mark 也改成插入后按字符偏移 `mark_set`
+  - **表格降级**：`_render_table` 原本每张表建 `tk.Frame` + N×M 个 `tk.Label` 再 `window_create` 嵌进 `tk.Text`，embedded window 滚动时重绘代价极高，多表格文档直接拖死。现改为 monospace 纯文本渲染——新增 `_display_width`（用 `unicodedata.east_asian_width` 正确处理 CJK 全角宽度）和 `_pad_cell`（左/右/居中对齐填空格），新增 `table_head / table_row / table_row_alt` 三个 MONO 字体 tag（表头 topbar bg + 粗体，行交替 bg）。彻底不用 embedded window
+  - **paper bgstipple 阈值**：`>60000 chars` 的文档跳过 `tag_add("paper", "1.0", "end")`，避免 bgstipple 全局逐像素重绘。小文档保留纸质颗粒
+  - **去掉 `_render_active` 里的 `update_idletasks()`**：这个强制同步刷新会放大首帧卡顿
+  - **live preview debounce 动态化**：`_on_edit_change` 按 doc_chars 分级——`<30k` = 250 ms / `<60k` = 500 ms / `>60k` = 900 ms，auto-save 同步放宽到 `max(900, live_ms + 200)` ms。之前写死 250 ms 对大文档太激进，每次 pause 都全量重渲染 → UI 冻结
+- **新常量**：`LARGE_DOC_CHARS = 60000`（paper 阈值 + debounce 分级共用）
+- **新 import**：`unicodedata`（用于 CJK 宽度计算）
+
 ## [0.4.7] - 2026-04-14
 
 ### 修复
