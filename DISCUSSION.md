@@ -289,7 +289,7 @@ Windows 对 `HTCAPTION 点击拖拽 maximized 窗口` 的默认处理是：
 ### 遗留 TODO
 - [ ] 把 `dist\md-reader.exe` 复制到不含中文的稳定目录（如 `D:\Tools\md-reader\`），避免源目录重命名再次失效
 - [ ] `build\` 和 `md-reader.spec` 加入 `.gitignore`
-- [ ] 给 exe 配真正的 `.ico` 图标（当前跳过，banner.jpg 不能直接作为 `--icon`）
+- [ ] 给 exe 配真正的 `.ico` 图标（当前跳过，banner.png 不能直接作为 `--icon`，需要单独做一版方形图标）
 - [ ] 考虑把 PyInstaller 打包步骤写进 CHANGELOG.md 0.5.0 条目
 
 ## 文件清单当前状态

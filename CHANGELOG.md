@@ -23,7 +23,15 @@ between pairs. Also: clickable `[text](url)` links now actually open
 in the default browser (they were style-only before). `skill/SKILL.md`
 extended with bilingual trigger phrases; new `AGENTS.md` at the repo
 root for Codex CLI / Cursor / Aider / other agents following the
-[agents.md convention](https://agents.md/).
+[agents.md convention](https://agents.md/). Repo globalized:
+English-first `README.md` with a `README.zh-CN.md` counterpart,
+language switcher strip at the top of both, English **EN** summary
+block prepended to every CHANGELOG entry, English preface added to
+`DISCUSSION.md`. Banner redesigned as an 18th-century printed letter
+(IM Fell English + Cormorant SC + fleuron ornament) with texture
+rewritten to match the real app's Tk `-bgstipple` pixel dither exactly
+(`#E3DBC6` speck at 22% density on flat `#F3EBD6`), shipped as
+`banner.png` replacing `banner.jpg`.
 
 ### 新增
 
@@ -41,6 +49,8 @@ root for Codex CLI / Cursor / Aider / other agents following the
   - 每个 tab 独立记忆 `trans_mode` 和 block 切片
 - **skill 升级**：`skill/SKILL.md` 扩展了 description 和触发语映射，让装了 skill 的 Claude Code 在用户说「中英对照打开」/「翻译成中文」/「bilingual」/「translate to Chinese」时自动带上 `--trans bi` 或 `--trans zh`
 - **AGENTS.md 跨 agent 接入**：仓库根新增 `AGENTS.md`，遵循 [agents.md convention](https://agents.md/)，Codex CLI / Cursor / Aider / Continue / Jules 等能读 AGENTS.md 的 agent 启动时自动加载，内容等价于 SKILL.md 但用 agent-agnostic 语言（不提"skill"概念、去掉 Claude Code 特有的 YAML frontmatter 字段）。README 的「Claude Code 集成」章节扩展为「AI Agent 集成」，列出各 agent 的接入方式和两份触发规则文件的分工
+- **全球化**：README 英文优先（`README.md` 是英文精简版 ~230 行、`README.zh-CN.md` 保留中文原版），顶部加语言切换条；CHANGELOG 每个版本前加英文 **EN** summary；DISCUSSION.md 开头加英文 note 说明这是中文决策日志；banner.html 的右侧文案也重写为古英语书信体口吻（`already before thee`、`openeth of its own accord`）。GitHub 首页对非中文用户直接可读
+- **Banner 视觉重做**：`banner.html` 换成 18 世纪印刷书信体风格——IM Fell English + Cormorant SC 字体（Google Fonts），右侧 tagline 下加 fleuron 分割符（❦），chip 从圆角 pill 改成方角 small-caps 让它更像时代印章。质感层面把原来 SVG `feTurbulence` 的柔软"水彩噪点"换成 `feComponentTransfer` + `feFuncA type='discrete'` 的离散像素 dither，speck 颜色精确对齐 `_blend_hex(#F3EBD6, #3C3328, 0.09) = #E3DBC6`——就是真实 app 生成 XBM 位图时用的同一个公式，密度 `tableValues='0 0 0 0 0 0 0 1 1'` ≈ 22% 对齐 `density=0.22`。banner 外层和 mock 窗口共用同一张纸 + 同一个 stipple，mock 窗口靠 box-shadow 浮起来（真实 app 在 Parchment 桌面上就是这样）。mock window 顶栏补上 0.5.0 的 `原` 翻译按钮。`banner.jpg` 退役，换成 `banner.png`（PNG 无损保留锐利像素 dither，JPEG 会糊掉），`.gitignore` 相应解除对 `banner.png` 的忽略
 
 ### 变更
 
@@ -199,7 +209,7 @@ the Kraft theme.
 
 ### 已知限制
 
-- `bgstipple` 只能通过 Text tag 应用，tk Frame / Label 不支持 stipple，所以 topbar / tab bar / TOC 侧边栏的 Frame 背景依然是纯色。目前只有 Text 控件（正文渲染区和 TOC 列表）有真正的纹理。如果要所有区域都有纹理，需要把 Frame 换成 Canvas + `create_image` 铺 tile，那是 0.5.0 的工程量。
+- `bgstipple` 只能通过 Text tag 应用，tk Frame / Label 不支持 stipple，所以 topbar / tab bar / TOC 侧边栏的 Frame 背景依然是纯色。目前只有 Text 控件（正文渲染区和 TOC 列表）有真正的纹理。如果要所有区域都有纹理，需要把 Frame 换成 Canvas + `create_image` 铺 tile。
 
 ## [0.4.2] - 2026-04-14
 
