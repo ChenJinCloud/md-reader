@@ -1,9 +1,29 @@
 # Changelog
 
-本项目所有重要变更都记录在此文件中。
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+All notable changes to this project are documented in this file. Each
+version has a short English summary followed by Chinese detail bullets.
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+本项目所有重要变更都记录在此文件中。每个版本先给一段英文 summary，
+然后是中文细节清单。
 
 ## [0.5.0] - 2026-04-15
+
+**EN**: English → Chinese bilingual reading mode. New toolbar button
+`原/双/中` cycles source → bilingual → Chinese, `Ctrl+T` shortcut, and
+`--trans bi|zh` CLI flag work at launch and via the single-instance
+IPC handoff. Uses Google Translate's free `gtx` endpoint through a
+local proxy (`127.0.0.1:7897` by default, `MD_READER_PROXY`
+overridable). Paragraph-level segmentation + disk-backed cache at
+`%LOCALAPPDATA%\md-reader\translate-cache.json` (sha1-keyed, shared
+across files and sessions). Bilingual mode uses a `\u200b` ZWSP
+sentinel + new `*_tight` tag variants (spacing1=0) to glue each
+translation tight against its source while keeping normal gaps
+between pairs. Also: clickable `[text](url)` links now actually open
+in the default browser (they were style-only before). `skill/SKILL.md`
+extended with bilingual trigger phrases; new `AGENTS.md` at the repo
+root for Codex CLI / Cursor / Aider / other agents following the
+[agents.md convention](https://agents.md/).
 
 ### 新增
 
@@ -24,11 +44,25 @@
 
 ### 变更
 
-- 新增 import：`hashlib` / `threading` / `urllib.request` / `urllib.parse`
+- 新增 import：`hashlib` / `threading` / `urllib.request` / `urllib.parse` / `webbrowser`
 - `_open_tab` 在 tab dict 里多塞了 `trans_mode` / `trans_blocks` / `trans_busy` 三个字段
 - `_switch_tab` 末尾调 `_refresh_trans_btn`，按钮随 tab 切换刷新
 
+### 修复
+
+- **链接现在真的能点**：之前 `[text](url)` 只被渲染成带 accent 色 + 下划线的样式，`emit_inline` 里 URL 直接被丢掉、`link` tag 也没有 `tag_bind`，所以点了没反应。现在每个链接生成独一无二的 `link_<N>` tag（共享 `link` 样式），URL 存到 `self._link_urls` dict 里，点击通过 `webbrowser.open` 在默认浏览器打开；hover 时光标变 `hand2`。每次 `_render` 开头清理旧的 `link_*` tag 防止跨文档串台
+
 ## [0.4.8] - 2026-04-14
+
+**EN**: Switched distribution from `.cmd + pythonw + .pyw` to a
+PyInstaller-built single-file `dist/md-reader.exe` so clone-and-run
+works without Python installed, and `install.cmd` registers the real
+PE exe (Windows 10/11 UserChoice rejects `.cmd` as a default handler).
+Also a big batch of large-document rendering fixes: buffered
+`_render` (one insert + batched `tag_add` via char offsets),
+monospace table fallback replacing embedded `Frame`/`Label` windows,
+paper-grain bgstipple skipped on docs >60k chars, debounced live
+preview scaled to document size.
 
 ### 变更
 
@@ -52,6 +86,13 @@
 
 ## [0.4.7] - 2026-04-14
 
+**EN**: Fixed inability to select/copy rendered text. The widget was
+being put into `state="disabled"` which kills mouse selection in Tk;
+replaced with a "read-only-but-selectable" approach that keeps
+`state="normal"` and intercepts mutating keypresses via
+`_readonly_keypress` (passes `Ctrl+C` / `Ctrl+A` / navigation, blocks
+everything else).
+
 ### 修复
 
 - **渲染区无法选中复制文本**：正文 `self.text` 在 `_render_active` 末尾被 `configure(state="disabled")`，tkinter 下 disabled Text widget 会完全禁用鼠标选区，用户点击拖动毫无反应。修复思路是"read-only but selectable"：保持 `state="normal"`，改为在控件级拦截所有写入类事件
@@ -62,6 +103,9 @@
 - **注意**：单实例架构下 `md-reader.cmd` 只把路径转交给已在运行的窗口，不会重载 Python 代码，升级后需要手动关闭现有 MD Reader 再重新打开
 
 ## [0.4.6] - 2026-04-14
+
+**EN**: Added `install.cmd` to register `.md` association under HKCU
+so the "Always use this app" checkbox actually works on Win10/11.
 
 ### 新增
 
@@ -74,6 +118,12 @@
   - `install.cmd /uninstall` 卸载
 
 ## [0.4.5] - 2026-04-14
+
+**EN**: Added Medium theme, removed Kraft. Fixed theme switch
+dropping unsaved edits. Fixed harsh bold weight in tab strip font.
+Split-edit mode upgraded to bidirectional sync with external
+editors (Claude Code et al): external changes merge in when local
+buffer is clean; 900 ms debounced autosave.
 
 ### 改动
 
@@ -102,6 +152,9 @@
 
 ## [0.4.4] - 2026-04-14
 
+**EN**: Added split-screen edit mode (`Ctrl+E`): bottom editor pane
+with live preview and autosave back to the source file.
+
 ### 新增
 
 - **分屏编辑模式**（DISCUSSION.md 里的 C 路方案，从 0.4.0 就定好了方向只是一直没做）
@@ -121,6 +174,10 @@
 - state schema 新增：`edit_visible: bool`、`edit_height: int`
 
 ## [0.4.3] - 2026-04-14
+
+**EN**: Added real paper grain via Tk `-bgstipple` pixel dithering
+(32×32 seeded XBM noise bitmap generated at startup). Desaturated
+the Kraft theme.
 
 真的加上纹理 + 调 Kraft。
 
@@ -145,6 +202,9 @@
 - `bgstipple` 只能通过 Text tag 应用，tk Frame / Label 不支持 stipple，所以 topbar / tab bar / TOC 侧边栏的 Frame 背景依然是纯色。目前只有 Text 控件（正文渲染区和 TOC 列表）有真正的纹理。如果要所有区域都有纹理，需要把 Frame 换成 Canvas + `create_image` 铺 tile，那是 0.5.0 的工程量。
 
 ## [0.4.2] - 2026-04-14
+
+**EN**: Visual redesign — paper-themed color palettes, 18 px rounded
+window corners via Win32 `SetWindowRgn`, draggable TOC splitter.
 
 纸质质感重设计 + TOC 侧边栏可拖拽 + 窗口圆角。
 
@@ -171,6 +231,12 @@
 - state schema 新增：`toc_width: int`
 
 ## [0.4.1] - 2026-04-13
+
+**EN**: Gave up on Win11 native snap after five rounds of custom
+Win32 chrome experiments that all crashed the window, reverted to
+plain `overrideredirect(True)`. Lost snap, kept stability. Also
+fixed debounce-related jank when rapidly clicking the font-size
+buttons.
 
 一次失败的架构探险和及时回退。核心经验：**为一个增量能力承担整个架构风险是坏交易**。
 
@@ -217,6 +283,9 @@
 - `md-reader.pyw`: ~780 行 → ~1290 行（含 B 路探险残留的 ctypes 常量和 `_bind_native` 绑定；这些现在是惰性导入，不会被调用，留着以备后续扩展）
 
 ## [0.4.0] - 2026-04-13
+
+**EN**: Multi-tab, TOC sidebar, file watcher for auto-reload, custom
+themes directory, GFM tables, continuous font-size slider.
 
 0.3.0 之后同一天的多轮迭代，统一发版。
 
@@ -279,6 +348,9 @@
 
 ## [0.3.0] - 2026-04-13
 
+**EN**: Abandoned the mshta/HTA route, rewrote as Python tkinter
+with `overrideredirect(True)` for a frameless self-drawn window.
+
 ### 改动
 
 - **彻底替换渲染层**：从 mshta + HTA + Markdig 换成纯 Python tkinter 自绘窗口。原方案虽然不是浏览器但 mshta 弹出的就是个普通系统对话框，外观仍然不够独立优雅
@@ -311,6 +383,11 @@
 
 ## [0.2.0] - 2026-04-13
 
+**EN**: Rejected approach — local `Markdig.dll` via PowerShell,
+rendered into an HTA launched by `mshta.exe`. Solved "not a
+browser" but the mshta window looks like a system dialog, not a
+standalone app.
+
 ### 改动
 
 - **渲染器从浏览器换成 mshta**：原本生成 HTML 后用默认浏览器打开，现改为生成 HTA 文件由 Windows 内置的 `mshta.exe` 打开，呈现为独立的原生窗口（无地址栏/标签/菜单），不再像浏览器
@@ -334,6 +411,11 @@
 - `open-md.cmd`、`open-md.ps1`：被 `md-reader.cmd` 取代
 
 ## [0.1.0] - 2026-04-13
+
+**EN**: Rejected approach — PowerShell embedding base64'd .md
+content into an HTML template with CDN `marked.js`, opened in the
+default browser. Killed because "browser chrome fighting for
+attention" is exactly what this project exists to avoid.
 
 首个版本。
 

@@ -1,5 +1,15 @@
 # DISCUSSION
 
+> **Note for English readers**: This is a time-stamped project
+> decision journal kept in Chinese. It records design debates,
+> rejected approaches, and post-mortem notes as they happened. If
+> you're looking for a user-facing description of the project, see
+> [README.md](README.md). If you want a version history in English,
+> see the **EN** summary blocks at the top of each entry in
+> [CHANGELOG.md](CHANGELOG.md). This file is not intended as
+> primary documentation — it's the author's working journal, kept
+> public for transparency.
+
 按时间线记录这个项目的决策过程和踩坑实况。
 
 ## 2026-04-13 项目启动

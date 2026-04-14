@@ -24,6 +24,7 @@ import hashlib
 import threading
 import urllib.request
 import urllib.parse
+import webbrowser
 
 LARGE_DOC_CHARS = 60000
 
@@ -766,6 +767,8 @@ class MDReader:
         self._rebuild_after_id = None
         self._hit_log_count = 0
         self._tab_click_widgets = []
+        self._link_urls = {}
+        self._link_counter = 0
 
         self._build_ui()
         self._open_tab(initial_path)
@@ -1770,6 +1773,17 @@ class MDReader:
         lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         n = len(lines)
 
+        # Drop per-link tags from the previous render so their click
+        # bindings don't leak to new content at the same char offsets.
+        for tn in list(self.text.tag_names()):
+            if tn.startswith("link_"):
+                try:
+                    self.text.tag_delete(tn)
+                except Exception:
+                    pass
+        self._link_urls = {}
+        self._link_counter = 0
+
         parts = []            # text chunks to concatenate
         spans = []            # (start_char, end_char, tag_or_tuple)
         cursor = [0]          # running char offset
@@ -1804,7 +1818,14 @@ class MDReader:
                 elif m.group(6):
                     lm = re.match(r'\[([^\]]+)\]\(([^)]+)\)', seg)
                     if lm:
-                        emit(lm.group(1), base_t + ("link",))
+                        # Every link gets its own unique tag so we can
+                        # bind a click handler that knows THIS url (the
+                        # shared "link" tag still carries the style).
+                        self._link_counter += 1
+                        link_tag = f"link_{self._link_counter}"
+                        self._link_urls[link_tag] = lm.group(2)
+                        emit(lm.group(1),
+                             base_t + ("link", link_tag))
                 pos = m.end()
             if pos < len(text):
                 emit(text[pos:], base_t)
@@ -2013,6 +2034,29 @@ class MDReader:
         for off, mark_key in heading_todo:
             self.text.mark_set(mark_key, f"1.0 + {off} chars")
             self.text.mark_gravity(mark_key, "left")
+
+        # Wire up click bindings for each inline [text](url) link.
+        # Shared "link" tag carries the style; per-link "link_<n>" tag
+        # carries the URL and the click/hover handlers.
+        for tag_name, url in self._link_urls.items():
+            self.text.tag_bind(
+                tag_name, "<Button-1>",
+                lambda e, u=url: self._open_url(u),
+            )
+            self.text.tag_bind(
+                tag_name, "<Enter>",
+                lambda e: self.text.configure(cursor="hand2"),
+            )
+            self.text.tag_bind(
+                tag_name, "<Leave>",
+                lambda e: self.text.configure(cursor="arrow"),
+            )
+
+    def _open_url(self, url):
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
 
     # ── Theme / size ─────────────────────────────────
     def _next_theme(self, e=None):
