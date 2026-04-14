@@ -128,10 +128,13 @@ pythonw md-reader.pyw "path\to\file.md"
 ├── md-reader.cmd              # 源码启动器（dev：直接 pythonw .pyw，不走 exe）
 ├── install.cmd                # 一次性注册 .md 关联到 dist\md-reader.exe（HKCU，不需要管理员）
 ├── test-sample.md             # 测试文档，覆盖常用 GFM 语法
+├── test-sample-en.md          # 英文测试文档，用于验证翻译 / 中英对照
 ├── themes/                    # 可选，放自定义主题 JSON
 ├── banner.jpg                 # 项目宣传图
 ├── banner.html                # banner 源文件
 ├── README.md                  # 本文件
+├── AGENTS.md                  # AI agent（Codex CLI / Cursor / Aider 等）调用规则
+├── skill/SKILL.md             # Claude Code 专属 skill 文件（触发词 + 调用规则）
 ├── CHANGELOG.md               # 版本变更记录
 ├── DISCUSSION.md              # 项目决策时间线
 ├── LICENSE                    # MIT
@@ -180,31 +183,48 @@ pythonw md-reader.pyw "path\to\file.md"
 
 配色建议：**背景别用纯白、文字别用纯黑**。纸质主题的精神是"永远差那么一点点色度"，才有墨水在纸上的感觉。
 
-## Claude Code 集成
+## AI Agent 集成
 
-这是 MD Reader 的另一半意义。项目自带一个 Skill 定义 `skill/SKILL.md`，装好之后你会得到一种新的节奏：
+这是 MD Reader 的另一半意义。工具的最佳使用场景是：
 
-**CC 写完一份 md → 它自己就把窗口推到你面前 → 你抬头就读到。**
+**AI Agent 写完一份 md → 它自己就把窗口推到你面前 → 你抬头就读到。**
 
-不用你复制路径、不用切终端、不用找文件、不用双击、不用等 IDE 起来。Agent 的速度和你的速度之间，原本那几次手动切换没了 —— 这是 skill 存在的全部理由。
+不用你复制路径、不用切终端、不用找文件、不用双击、不用等 IDE 起来。Agent 的速度和你的速度之间，原本那几次手动切换没了 —— 这是集成存在的全部理由。
 
-具体触发：你对 Claude 说"**打开你刚写的那份 md**"、"**用阅读器看一下**"、"**render this markdown**"之类的话，Claude 会自动调 `dist\md-reader.exe` 把文件拉到独立窗口里，不会把文件内容贴回对话（因为你马上要在窗口里读了）。
+具体触发：对 agent 说"**打开你刚写的那份 md**"、"**用阅读器看一下**"、"**中英对照打开这份英文 spec**"、"**render this markdown**"之类的话，agent 自动调 `dist\md-reader.exe`（或带 `--trans bi` / `--trans zh`）把文件拉到独立窗口里，不会把文件内容贴回对话。
 
-安装分两步：
+为了让不同 agent 都能识别这个工具，仓库里放了两份触发规则文件：
 
-**1）把仓库里的绝对路径改成你的 clone 路径。** `skill/SKILL.md` 里硬编码的项目路径是作者本机的（`D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\`），直接拷过去在你机器上会找不到 exe。用编辑器 replace-all 换成你自己的 clone 根目录，一共两处（`## How to invoke` 和 `## One-line example`），顶部 HTML 注释有说明。
+| 文件 | 给谁用 | 作用 |
+|---|---|---|
+| `skill/SKILL.md` | **Claude Code** | 放到 `~/.claude/skills/md-reader/` 后，Claude Code 自动加载，出现"看 md"类意图时主动触发 |
+| `AGENTS.md`（仓库根） | **Codex CLI / Cursor / Aider / Continue / Jules 等** | 遵循 [AGENTS.md convention](https://agents.md/)，这些 agent 启动时会自动读仓库根的 AGENTS.md，内容等价于 SKILL.md 但用 agent-agnostic 语言 |
 
-**2）复制到 Claude Code 的 skills 目录：**
+### 各 agent 接入方式
+
+**Claude Code**（最丝滑）：
 
 ```bash
-# Windows (Git Bash / WSL / MSYS)
+# Git Bash / WSL / MSYS
 mkdir -p ~/.claude/skills/md-reader
 cp skill/SKILL.md ~/.claude/skills/md-reader/SKILL.md
 ```
 
-或者直接在 Windows 资源管理器里把 `skill` 目录复制成 `C:\Users\<你>\.claude\skills\md-reader`。
+然后把 `skill/SKILL.md` 里硬编码的作者本机路径（`D:\ClaudeCodeWorkspace\...\md-reader\`）replace-all 成你自己的 clone 根目录，一共 8 处（`## How to invoke` 和几个 `## One-line examples`），文件顶部 HTML 注释有说明。
 
-Claude Code 下次启动时会自动识别这个 skill，当对话里出现"打开 md"类语义时就调用 `dist\md-reader.exe`。触发条件、边界（比如只在"想看、想读、想渲染"时调用，而不是"想编辑或提问"时）都写在 `SKILL.md` 的 description 里。因为指向的是 PyInstaller 打出的单文件 exe，对方机器不需要装 Python。
+**Codex CLI**：开箱即用。Codex CLI 启动时会自动读仓库根的 `AGENTS.md`（以及上层目录的 AGENTS.md）。把 AGENTS.md 里的 `<repo-root>` 占位符手动换成你的 clone 路径即可——或者让 Codex 自己第一次调用失败时读一下路径再记住。
+
+**Cursor / Continue / Aider / 其他**：如果你的 agent 支持 `AGENTS.md` convention（越来越多的在跟进），同 Codex。不支持的话，两种 fallback：
+1. 在 agent 的 rules 文件里引用 `AGENTS.md`（Cursor 的 `.cursorrules`、Aider 的 conventions 等）
+2. 在对话里贴一句"参考 `AGENTS.md` 里的 md-reader 工具"，让 agent 自己去读
+
+**不用 agent、命令行党**：直接 `dist\md-reader.exe "<path>"` 就行，README 的 ["快速启动"](#快速启动) 章节已经写清楚了。
+
+### 为什么有两份文件
+
+SKILL.md 是 Claude Code 独有格式——YAML frontmatter + `description` 字段，Claude Code 把 description 当作半结构化 prompt 来匹配用户意图，触发精度很高。AGENTS.md 是正在形成事实标准的 cross-agent convention，更像一份「给 AI 看的 README」，对匹配精度要求稍弱但兼容面广。两份文件内容重合 ~80%，维护时同步即可。
+
+所有 agent 都调用同一个 `dist\md-reader.exe` 二进制，所以使用者机器不需要装 Python。
 
 ## 状态记忆
 

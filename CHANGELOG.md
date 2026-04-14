@@ -9,6 +9,7 @@
 
 - **英译中 / 中英对照阅读模式**：顶栏新增翻译按钮，三态循环「原 → 双 → 中」，快捷键 `Ctrl+T`，CLI flag `--trans bi|zh` 支持一键以对照/纯中文打开（首次启动和 IPC handoff 两条路径都支持，单实例 pending 文件格式扩展为首行 path、可选后续行 `trans=<mode>`）
 - **skill 升级**：`skill/SKILL.md` 扩展了 description 和触发语映射，让装了 skill 的 Claude Code 在用户说「中英对照打开」/「翻译成中文」/「bilingual」/「translate to Chinese」时自动带上 `--trans bi` 或 `--trans zh`
+- **AGENTS.md 跨 agent 接入**：仓库根新增 `AGENTS.md`，遵循 [agents.md convention](https://agents.md/)，Codex CLI / Cursor / Aider / Continue / Jules 等能读 AGENTS.md 的 agent 启动时自动加载，内容等价于 SKILL.md 但用 agent-agnostic 语言（不提"skill"概念、去掉 Claude Code 特有的 YAML frontmatter 字段）。README 的「Claude Code 集成」章节扩展为「AI Agent 集成」，列出各 agent 的接入方式和两份触发规则文件的分工
   - 调用 Google Translate 公共端点 `translate.googleapis.com/translate_a/single?client=gtx`（免 key），通过本地代理 `http://127.0.0.1:7897` 出海，可用 `MD_READER_PROXY` 环境变量覆盖
   - 段落级粒度：按 block 切块翻译而非整文档打包，原因是要支持「双语对照」需要保持段落对齐，整文档翻译后无法按 block 交错回去
   - 切块逻辑 `extract_md_blocks`：mirror 渲染器的 line-based parser，产出 `verbatim`（代码块 / 空行 / HR / 表格）、`prefixed`（标题 / 列表 / 任务项，保留 `#`、`- `、`1. ` 等前缀）、`quote`、`para` 四种 block 类型；只对含英文字母的 block 发起翻译，中文块直接跳过
