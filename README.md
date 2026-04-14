@@ -31,7 +31,7 @@ MD Reader 就是为这两个场景存在的一个极轻的桌面 Markdown 阅读
 - **真 · 颗粒纹理** — 正文和 TOC 用 Tk `-bgstipple` 做逐像素两色噪点抖动（启动时生成固定种子的 32×32 XBM 位图），不是纯底色
 - **圆角窗口** — Win32 `CreateRoundRectRgn` + `SetWindowRgn`，18 px 半径，一次性调用零副作用
 - **frameless + 自绘 topbar** — 没有系统标题栏，自己绘 chrome，按钮全在顶部一排
-- **多标签单窗口** — 再次用 `md-reader.cmd` 打开新文件 = 作为新标签加入现有窗口，`msvcrt.locking` 抢单实例锁 + 文件 IPC
+- **多标签单窗口** — 再次调用 `dist\md-reader.exe` 打开新文件 = 作为新标签加入现有窗口，`msvcrt.locking` 抢单实例锁 + 文件 IPC
 - **TOC 侧边栏** — 解析 h1-h3 点击跳转，**宽度可拖拽**（140–600 px），状态持久化
 - **分屏编辑模式** — `Ctrl+E` 切换，底部展开 MONO 字体编辑面板，改动 250 ms 防抖实时重渲染正文，900 ms 防抖自动保存到文件，`Ctrl+S` 即刻保存
 - **和外部编辑器双向同步** — Claude Code 等第三方工具改动当前打开的文件时，reader 窗口自动拉新内容到正文和编辑缓冲区（前提：你本地没有未保存的改动）
@@ -179,9 +179,13 @@ pythonw md-reader.pyw "path\to\file.md"
 
 不用你复制路径、不用切终端、不用找文件、不用双击、不用等 IDE 起来。Agent 的速度和你的速度之间，原本那几次手动切换没了 —— 这是 skill 存在的全部理由。
 
-具体触发：你对 Claude 说"**打开你刚写的那份 md**"、"**用阅读器看一下**"、"**render this markdown**"之类的话，Claude 会自动调 `md-reader.cmd` 把文件拉到独立窗口里，不会把文件内容贴回对话（因为你马上要在窗口里读了）。
+具体触发：你对 Claude 说"**打开你刚写的那份 md**"、"**用阅读器看一下**"、"**render this markdown**"之类的话，Claude 会自动调 `dist\md-reader.exe` 把文件拉到独立窗口里，不会把文件内容贴回对话（因为你马上要在窗口里读了）。
 
-安装：把 `skill/SKILL.md` 复制到 `~/.claude/skills/md-reader/SKILL.md`：
+安装分两步：
+
+**1）把仓库里的绝对路径改成你的 clone 路径。** `skill/SKILL.md` 里硬编码的项目路径是作者本机的（`D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\`），直接拷过去在你机器上会找不到 exe。用编辑器 replace-all 换成你自己的 clone 根目录，一共两处（`## How to invoke` 和 `## One-line example`），顶部 HTML 注释有说明。
+
+**2）复制到 Claude Code 的 skills 目录：**
 
 ```bash
 # Windows (Git Bash / WSL / MSYS)
@@ -191,7 +195,7 @@ cp skill/SKILL.md ~/.claude/skills/md-reader/SKILL.md
 
 或者直接在 Windows 资源管理器里把 `skill` 目录复制成 `C:\Users\<你>\.claude\skills\md-reader`。
 
-Claude Code 下次启动时会自动识别这个 skill，当对话里出现"打开 md"类语义时就调用。触发条件、边界（比如只在"想看、想读、想渲染"时调用，而不是"想编辑或提问"时）都写在 `SKILL.md` 的 description 里。
+Claude Code 下次启动时会自动识别这个 skill，当对话里出现"打开 md"类语义时就调用 `dist\md-reader.exe`。触发条件、边界（比如只在"想看、想读、想渲染"时调用，而不是"想编辑或提问"时）都写在 `SKILL.md` 的 description 里。因为指向的是 PyInstaller 打出的单文件 exe，对方机器不需要装 Python。
 
 ## 状态记忆
 
