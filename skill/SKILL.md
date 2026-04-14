@@ -12,17 +12,29 @@ description: >-
   (use Edit / Write). Windows only.
 metadata:
   requires:
-    bins: ["pythonw.exe"]
+    bins: []
   platform: Windows
   repo: https://github.com/ChenJinCloud/md-reader
 ---
 
+<!--
+  NOTE TO USERS COPYING THIS SKILL:
+  The absolute path below points at the author's local clone. After you
+  `git clone` this repo, replace every occurrence of
+    D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader
+  with your own clone path, then copy this file to
+    ~/.claude/skills/md-reader/SKILL.md
+  The skill calls the PyInstaller-built exe at <clone>\dist\md-reader.exe
+  which is shipped in the repo — no Python required.
+-->
+
 # MD Reader
 
 Opens a Markdown file in a dedicated desktop reader window via the
-project at `D:\ClaudeCodeWorkspace\2026-04-13-markdown阅读器-md-reader\`.
+project at `D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\`.
 MD Reader is a Python tkinter frameless app — paper themes, rounded
-corners, multi-tab, split-screen editor.
+corners, multi-tab, split-screen editor — shipped as a PyInstaller
+single-file exe at `dist\md-reader.exe`.
 
 ## When to trigger
 
@@ -50,7 +62,7 @@ One shell command. Always pass an **absolute path**. Resolve relative
 paths to absolute before invoking.
 
 ```bash
-D:\ClaudeCodeWorkspace\2026-04-13-markdown阅读器-md-reader\md-reader.cmd "<absolute-path-to-md-file>"
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" "<absolute-path-to-md-file>"
 ```
 
 Behavior guarantees:
@@ -60,9 +72,9 @@ Behavior guarantees:
    window via `.md-reader.lock` + `.md-reader-pending-*.txt` IPC, and
    the file opens as a new tab in that window. You do NOT need to check
    whether a window is already open — just run the command.
-2. **Fire-and-forget.** The launcher uses `start ""` to spawn
-   `pythonw.exe` detached. The command returns immediately. Don't wait
-   for it and don't tail its output.
+2. **Fire-and-forget.** The exe is a `--windowed` PyInstaller build, so
+   it spawns detached from the terminal and the command returns
+   immediately. Don't wait for it and don't tail its output.
 3. **No return value worth reading.** If the command exits 0, you're
    done. The user's window appeared on their desktop.
 
@@ -75,10 +87,10 @@ Behavior guarantees:
 
 ## What you DON'T need to do
 
-- Don't check if `pythonw.exe` exists — the `.cmd` launcher handles
-  errors and the user is on Windows.
+- Don't check if Python is installed — the exe is self-contained and
+  needs no runtime.
 - Don't check if MD Reader is "installed" — it runs directly from the
-  script path, no install step.
+  exe path, no install step.
 - Don't print the file's content to the user after opening — they're
   going to read it in the reader window.
 
@@ -89,7 +101,7 @@ User: "打开你刚写的 2026-04-14-周报-weekly.md"
 You:
 
 ```bash
-D:\ClaudeCodeWorkspace\2026-04-13-markdown阅读器-md-reader\md-reader.cmd "D:\ClaudeCodeWorkspace\2026-04-14-周报-weekly.md"
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" "D:\ClaudeCodeWorkspace\2026-04-14-周报-weekly.md"
 ```
 
 Then reply in one short sentence: "已用 MD Reader 打开。"
