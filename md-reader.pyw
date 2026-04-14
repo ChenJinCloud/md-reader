@@ -20,6 +20,10 @@ import time
 import glob
 import faulthandler
 import unicodedata
+import hashlib
+import threading
+import urllib.request
+import urllib.parse
 
 LARGE_DOC_CHARS = 60000
 
@@ -349,6 +353,315 @@ def send_to_master(path):
         pass
 
 
+# ── Translator (EN → ZH via Google gtx through local proxy) ──
+TRANS_PROXY = os.environ.get("MD_READER_PROXY", "http://127.0.0.1:7897")
+TRANS_CACHE_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", SCRIPT_DIR), "md-reader"
+)
+TRANS_CACHE_FILE = os.path.join(TRANS_CACHE_DIR, "translate-cache.json")
+TRANS_MODES = ("orig", "bi", "zh")
+TRANS_LABEL = {"orig": "原", "bi": "双", "zh": "中"}
+
+_trans_cache_lock = threading.Lock()
+_trans_cache = None
+
+
+def _trans_cache_load():
+    global _trans_cache
+    if _trans_cache is not None:
+        return _trans_cache
+    try:
+        with open(TRANS_CACHE_FILE, "r", encoding="utf-8") as f:
+            _trans_cache = json.load(f)
+            if not isinstance(_trans_cache, dict):
+                _trans_cache = {}
+    except Exception:
+        _trans_cache = {}
+    return _trans_cache
+
+
+def _trans_cache_save():
+    try:
+        os.makedirs(TRANS_CACHE_DIR, exist_ok=True)
+        with _trans_cache_lock:
+            tmp = TRANS_CACHE_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(_trans_cache, f, ensure_ascii=False)
+            os.replace(tmp, TRANS_CACHE_FILE)
+    except Exception:
+        pass
+
+
+def _trans_key(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+_GTX_OPENER = None
+
+
+def _get_gtx_opener():
+    global _GTX_OPENER
+    if _GTX_OPENER is not None:
+        return _GTX_OPENER
+    if TRANS_PROXY:
+        handler = urllib.request.ProxyHandler({
+            "http": TRANS_PROXY,
+            "https": TRANS_PROXY,
+        })
+        _GTX_OPENER = urllib.request.build_opener(handler)
+    else:
+        _GTX_OPENER = urllib.request.build_opener()
+    _GTX_OPENER.addheaders = [("User-Agent",
+                               "Mozilla/5.0 (md-reader)")]
+    return _GTX_OPENER
+
+
+def _gtx_translate_one(text, timeout=15):
+    """Translate one English text to Chinese via Google gtx endpoint.
+    Returns the translated string, or raises on error."""
+    q = urllib.parse.quote(text, safe="")
+    url = (
+        "https://translate.googleapis.com/translate_a/single"
+        "?client=gtx&sl=en&tl=zh-CN&dt=t&q=" + q
+    )
+    opener = _get_gtx_opener()
+    with opener.open(url, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+    data = json.loads(raw)
+    # Structure: [ [ [zh, en, ...], [zh, en, ...], ... ], ... ]
+    parts = []
+    try:
+        for seg in data[0]:
+            if seg and seg[0]:
+                parts.append(seg[0])
+    except Exception:
+        pass
+    return "".join(parts).strip()
+
+
+def _has_english(text):
+    return bool(re.search(r"[A-Za-z]{2,}", text or ""))
+
+
+_TRANS_SPECIAL_RE = re.compile(
+    r'^(#{1,6}\s|```|>\s?|\s*[-*+]\s|\s*\d+\.\s|---+\s*$|\*\*\*\s*$|___\s*$)'
+)
+
+
+def extract_md_blocks(md):
+    """Split markdown into a list of blocks for translation.
+
+    Each block is a dict with one of these shapes:
+      {'kind': 'verbatim', 'orig': str}
+      {'kind': 'prefixed', 'prefix': str, 'text': str, 'orig': str}
+      {'kind': 'quote',    'text': str, 'orig': str}
+      {'kind': 'para',     'text': str, 'orig': str}
+
+    'orig' is always the exact original markdown slice for that block.
+    'text' fields hold the translatable natural-language payload.
+    """
+    lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    n = len(lines)
+    blocks = []
+    i = 0
+    while i < n:
+        line = lines[i]
+
+        # Fenced code block — swallow entire block verbatim
+        if re.match(r'^```', line):
+            buf = [line]
+            i += 1
+            while i < n:
+                buf.append(lines[i])
+                if re.match(r'^```', lines[i]):
+                    i += 1
+                    break
+                i += 1
+            blocks.append({"kind": "verbatim", "orig": "\n".join(buf)})
+            continue
+
+        stripped = line.strip()
+
+        # Blank line
+        if not stripped:
+            blocks.append({"kind": "verbatim", "orig": ""})
+            i += 1
+            continue
+
+        # Horizontal rule
+        if re.match(r'^(-{3,}|\*{3,}|_{3,})\s*$', stripped):
+            blocks.append({"kind": "verbatim", "orig": line})
+            i += 1
+            continue
+
+        # Heading
+        m = re.match(r'^(#{1,6}\s+)(.*)$', line)
+        if m:
+            blocks.append({
+                "kind": "prefixed",
+                "prefix": m.group(1),
+                "text": m.group(2).strip(),
+                "orig": line,
+            })
+            i += 1
+            continue
+
+        # Blockquote (consecutive lines starting with >)
+        if stripped.startswith(">"):
+            buf = []
+            while i < n and lines[i].strip().startswith(">"):
+                buf.append(lines[i])
+                i += 1
+            joined = " ".join(
+                re.sub(r'^\s*>\s?', '', b).strip()
+                for b in buf if b.strip()
+            )
+            blocks.append({
+                "kind": "quote",
+                "text": joined,
+                "orig": "\n".join(buf),
+            })
+            continue
+
+        # Task list item
+        m = re.match(r'^(\s*[-*+]\s+\[[ xX]\]\s+)(.*)$', line)
+        if m:
+            blocks.append({
+                "kind": "prefixed",
+                "prefix": m.group(1),
+                "text": m.group(2),
+                "orig": line,
+            })
+            i += 1
+            continue
+
+        # Unordered list item
+        m = re.match(r'^(\s*[-*+]\s+)(.*)$', line)
+        if m:
+            blocks.append({
+                "kind": "prefixed",
+                "prefix": m.group(1),
+                "text": m.group(2),
+                "orig": line,
+            })
+            i += 1
+            continue
+
+        # Ordered list item
+        m = re.match(r'^(\s*\d+\.\s+)(.*)$', line)
+        if m:
+            blocks.append({
+                "kind": "prefixed",
+                "prefix": m.group(1),
+                "text": m.group(2),
+                "orig": line,
+            })
+            i += 1
+            continue
+
+        # Table — keep verbatim, rendering it translated would break
+        # column alignment badly. Fall out of scope for this feature.
+        if "|" in line and i + 1 < n:
+            sep = lines[i + 1].strip()
+            if re.match(
+                r'^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$', sep
+            ):
+                buf = [line, lines[i + 1]]
+                j = i + 2
+                while j < n and "|" in lines[j] and lines[j].strip():
+                    buf.append(lines[j])
+                    j += 1
+                blocks.append({
+                    "kind": "verbatim",
+                    "orig": "\n".join(buf),
+                })
+                i = j
+                continue
+
+        # Paragraph — fold continuation lines until blank/special
+        para = [line]
+        j = i + 1
+        while (j < n and lines[j].strip()
+               and not _TRANS_SPECIAL_RE.match(lines[j])
+               and "|" not in lines[j]):
+            para.append(lines[j])
+            j += 1
+        blocks.append({
+            "kind": "para",
+            "text": " ".join(s.strip() for s in para),
+            "orig": "\n".join(para),
+        })
+        i = j
+    return blocks
+
+
+def collect_translatable(blocks):
+    """Return list of unique translatable texts that still need fetching
+    (have English, not already in the cache)."""
+    cache = _trans_cache_load()
+    seen = set()
+    todo = []
+    for b in blocks:
+        if b["kind"] == "verbatim":
+            continue
+        text = b.get("text", "").strip()
+        if not text or not _has_english(text):
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        if _trans_key(text) in cache:
+            continue
+        todo.append(text)
+    return todo
+
+
+def render_blocks(blocks, mode):
+    """Rebuild a markdown string from blocks in the given mode.
+    Translations are read from the shared cache."""
+    if mode == "orig":
+        return "\n".join(b["orig"] for b in blocks)
+    cache = _trans_cache_load()
+
+    def zh_of(text):
+        if not text or not _has_english(text):
+            return text
+        return cache.get(_trans_key(text), text)
+
+    # In bi mode, each translated line is prefixed with U+200B so the
+    # renderer treats it as a fresh paragraph boundary AND switches to the
+    # `*_tight` tag variant (spacing1=0) that glues it to the original
+    # above it. No blank-line separator — the tight tag handles spacing.
+    ZWSP = "\u200b"
+    out = []
+    for b in blocks:
+        kind = b["kind"]
+        if kind == "verbatim":
+            out.append(b["orig"])
+            continue
+        text = b.get("text", "")
+        zh = zh_of(text)
+        if kind == "prefixed":
+            if mode == "zh":
+                out.append(b["prefix"] + zh)
+            else:  # bi
+                out.append(b["orig"])
+                out.append(ZWSP + b["prefix"] + zh)
+        elif kind == "quote":
+            if mode == "zh":
+                out.append("> " + zh)
+            else:
+                out.append(b["orig"])
+                out.append(ZWSP + "> " + zh)
+        elif kind == "para":
+            if mode == "zh":
+                out.append(zh)
+            else:
+                out.append(b["orig"])
+                out.append(ZWSP + zh)
+    return "\n".join(out)
+
+
 class MDReader:
     def __init__(self, initial_path):
         self.root = tk.Tk()
@@ -444,6 +757,7 @@ class MDReader:
         self.root.bind("<Control-Prior>", lambda e: self._cycle_tab(-1))
         self.root.bind("<Control-Next>", lambda e: self._cycle_tab(1))
         self.root.bind("<Control-e>", lambda e: self._toggle_edit())
+        self.root.bind("<Control-t>", lambda e: self._cycle_translate_mode())
         self.root.bind("<Control-s>", lambda e: self._save_edit_buffer() or "break")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         # If the previous session had the editor open, load the active
@@ -581,6 +895,24 @@ class MDReader:
         reload_btn.bind("<Enter>", lambda e: reload_btn.configure(fg=self.t("accent")))
         reload_btn.bind("<Leave>", lambda e: reload_btn.configure(fg=self.t("secondary")))
         self._topbar_buttons.append((reload_btn, "btn"))
+
+        # Translate mode button (orig/bi/zh cycle)
+        cur_trans = "orig"
+        if self.tabs and 0 <= self.active < len(self.tabs):
+            cur_trans = self.tabs[self.active].get("trans_mode", "orig")
+        trans_btn = tk.Label(
+            topbar_inner, text=TRANS_LABEL[cur_trans],
+            font=(CJK_SANS, self.fs("top") + 1),
+            bg=self.t("topbar"),
+            fg=self.t("accent") if cur_trans != "orig" else self.t("secondary"),
+            cursor="hand2"
+        )
+        trans_btn.pack(side="right", padx=(0, 10))
+        trans_btn.bind("<Button-1>", lambda e: self._cycle_translate_mode())
+        trans_btn.bind("<Enter>", lambda e: trans_btn.configure(fg=self.t("fg")))
+        trans_btn.bind("<Leave>", lambda e: self._refresh_trans_btn())
+        self._trans_btn = trans_btn
+        self._topbar_buttons.append((trans_btn, "btn"))
 
         edit_btn = tk.Label(
             topbar_inner, text="\u270e", font=(SANS, self.fs("top") + 2),
@@ -797,6 +1129,24 @@ class MDReader:
         t.tag_configure("table_row_alt", font=(MONO, body),
                         background=self.t("code_bg"), foreground=self.t("fg"),
                         spacing1=1, spacing3=1, lmargin1=4, lmargin2=4)
+
+        # Tight variants used in bi-lingual mode for the translated line of
+        # each pair. Same font/fg as the base, spacing1=0 so the line glues
+        # to the original above it. spacing3 preserved → pair-to-pair gap
+        # still comes out correctly.
+        t.tag_configure("p_tight", font=(SERIF, body), foreground=self.t("fg"),
+                        spacing1=0, spacing3=8, lmargin1=0, lmargin2=0)
+        t.tag_configure("h1_tight", font=(SERIF, self.fs("h1"), "bold"),
+                        foreground=self.t("title"), spacing1=0, spacing3=12)
+        t.tag_configure("h2_tight", font=(SERIF, self.fs("h2"), "bold"),
+                        foreground=self.t("title"), spacing1=0, spacing3=10)
+        t.tag_configure("h3_tight", font=(SERIF, self.fs("h3"), "bold"),
+                        foreground=self.t("title"), spacing1=0, spacing3=8)
+        t.tag_configure("h4_tight", font=(SERIF, self.fs("h4"), "bold"),
+                        foreground=self.t("title"), spacing1=0, spacing3=6)
+        t.tag_configure("quote_tight", font=(SERIF, body, "italic"),
+                        foreground=self.t("quote_fg"),
+                        lmargin1=28, lmargin2=28, spacing1=0, spacing3=4)
 
     # ── Tab bar ───────────────────────────────────────
     def _populate_tabs(self):
@@ -1168,6 +1518,9 @@ class MDReader:
             "path": path,
             "name": os.path.basename(path),
             "scroll": 0.0,
+            "trans_mode": "orig",
+            "trans_blocks": None,
+            "trans_busy": False,
         })
         self._switch_tab(len(self.tabs) - 1)
 
@@ -1186,6 +1539,7 @@ class MDReader:
         self.active = idx
         self._populate_tabs()
         self._render_active()
+        self._refresh_trans_btn()
         if self.edit_visible:
             self._load_edit_buffer_from_active()
         self.root.title(f"MD Reader - {self.tabs[idx]['name']}")
@@ -1216,6 +1570,75 @@ class MDReader:
         if 0 <= self.active < len(self.tabs):
             self._render_active()
 
+    # ── Translate mode ────────────────────────────────
+    def _refresh_trans_btn(self):
+        btn = getattr(self, "_trans_btn", None)
+        if btn is None:
+            return
+        tab = self.tabs[self.active] if 0 <= self.active < len(self.tabs) else None
+        mode = tab.get("trans_mode", "orig") if tab else "orig"
+        if tab and tab.get("trans_busy"):
+            btn.configure(text="…", fg=self.t("accent"))
+            return
+        btn.configure(
+            text=TRANS_LABEL[mode],
+            fg=self.t("accent") if mode != "orig" else self.t("secondary"),
+        )
+
+    def _cycle_translate_mode(self):
+        if not (0 <= self.active < len(self.tabs)):
+            return
+        tab = self.tabs[self.active]
+        if tab.get("trans_busy"):
+            return
+        cur = tab.get("trans_mode", "orig")
+        nxt = TRANS_MODES[(TRANS_MODES.index(cur) + 1) % len(TRANS_MODES)]
+        tab["trans_mode"] = nxt
+        # Reset scroll to top when switching in/out of translation so the
+        # reader lands at the same logical place instead of a stale offset.
+        tab["scroll"] = 0.0
+        self._refresh_trans_btn()
+        self._render_active()
+
+    def _begin_translation(self, tab, todo):
+        """Kick off a background thread that translates uncached texts.
+        When done, schedules a re-render on the Tk main loop."""
+        tab["trans_busy"] = True
+        self._refresh_trans_btn()
+        tab_ref = tab
+
+        def worker(items):
+            results = {}
+            errors = 0
+            for text in items:
+                try:
+                    zh = _gtx_translate_one(text)
+                    if zh:
+                        results[_trans_key(text)] = zh
+                except Exception:
+                    errors += 1
+                    # Keep going — partial results are still useful.
+            if results:
+                with _trans_cache_lock:
+                    _trans_cache_load().update(results)
+                _trans_cache_save()
+            self.root.after(0, lambda: self._on_translation_done(tab_ref, errors))
+
+        t = threading.Thread(
+            target=worker, args=(list(todo),), daemon=True
+        )
+        t.start()
+
+    def _on_translation_done(self, tab, errors):
+        tab["trans_busy"] = False
+        self._refresh_trans_btn()
+        # Only re-render if this tab is still active and still in a
+        # translated mode. Otherwise the cache is warm for next time.
+        if (0 <= self.active < len(self.tabs)
+                and self.tabs[self.active] is tab
+                and tab.get("trans_mode", "orig") != "orig"):
+            self._render_active()
+
     # ── Markdown rendering ───────────────────────────
     def _render_active(self, src_override=None):
         """Render the active tab's body pane.
@@ -1235,13 +1658,30 @@ class MDReader:
                 with open(path, "r", encoding="utf-8") as f:
                     src = f.read()
                 try:
-                    tab["mtime"] = os.path.getmtime(path)
+                    new_mtime = os.path.getmtime(path)
+                    if tab.get("mtime") != new_mtime:
+                        # File changed on disk → drop block cache so the
+                        # next translate re-segments the new content.
+                        tab["trans_blocks"] = None
+                    tab["mtime"] = new_mtime
                 except Exception:
                     pass
             except FileNotFoundError:
                 src = f"# File Not Found\n\n`{path}`"
             except Exception as e:
                 src = f"# Error\n\n```\n{e}\n```"
+
+        # Apply translation transform if this tab is in bi/zh mode.
+        mode = tab.get("trans_mode", "orig")
+        if mode != "orig":
+            blocks = tab.get("trans_blocks")
+            if blocks is None:
+                blocks = extract_md_blocks(src)
+                tab["trans_blocks"] = blocks
+            missing = collect_translatable(blocks)
+            if missing and not tab.get("trans_busy"):
+                self._begin_translation(tab, missing)
+            src = render_blocks(blocks, mode)
 
         self._cur_headings = []
         self.text.delete("1.0", "end")
@@ -1383,10 +1823,19 @@ class MDReader:
         i = 0
         in_code = False
         code_buf = []
-        special_re = re.compile(r'^(#{1,6}\s|```|>\s|\s*[-*+]\s|\s*\d+\.\s|---+\s*$|\*\*\*\s*$|___\s*$)')
+        # `\u200b` (zero-width space) prefix is the bi-lingual "tight" marker:
+        # translator emits it in front of each translated line so this loop
+        # can (a) treat that line as a fresh paragraph boundary and (b) pick
+        # the `_tight` tag variant (spacing1=0) to glue it to the original.
+        special_re = re.compile(r'^(#{1,6}\s|```|>\s|\s*[-*+]\s|\s*\d+\.\s|---+\s*$|\*\*\*\s*$|___\s*$|\u200b)')
 
         while i < n:
             line = lines[i]
+            tight = False
+            if line.startswith("\u200b"):
+                tight = True
+                line = line[1:]
+            suffix = "_tight" if tight else ""
 
             m = re.match(r'^```(\w*)\s*$', line)
             if m:
@@ -1414,8 +1863,8 @@ class MDReader:
             if m:
                 level = len(m.group(1))
                 title = m.group(2).strip()
-                tag = f"h{level}"
-                if level <= 3:
+                tag = f"h{level}{suffix}"
+                if level <= 3 and not tight:
                     mark_key = f"hd_{len(self._cur_headings)}"
                     heading_todo.append((cursor[0], mark_key))
                     self._cur_headings.append({"level": level, "title": title, "mark": mark_key})
@@ -1425,11 +1874,18 @@ class MDReader:
 
             if stripped.startswith(">"):
                 buf = []
+                # First line may have been ZWSP-stripped already; use `line`
+                # for the first iteration, then `lines[i+k]` for continuation
+                # (continuation lines won't carry ZWSP — only the first line
+                # of a translated block gets the marker).
+                buf.append(re.sub(r'^\s*>\s?', '', line))
+                i += 1
                 while i < n and lines[i].strip().startswith(">"):
                     buf.append(re.sub(r'^\s*>\s?', '', lines[i]))
                     i += 1
-                emit_inline(" ".join(s.strip() for s in buf if s.strip()), ("quote",))
-                emit("\n", "quote")
+                emit_inline(" ".join(s.strip() for s in buf if s.strip()),
+                            (f"quote{suffix}",))
+                emit("\n", f"quote{suffix}")
                 continue
 
             m = re.match(r'^(\s*)[-*+]\s+\[([ xX])\]\s+(.*)$', line)
@@ -1441,8 +1897,8 @@ class MDReader:
                 if mark.lower() == "x":
                     emit(content + "\n", "task_done_text")
                 else:
-                    emit_inline(content, ("p",))
-                    emit("\n", "p")
+                    emit_inline(content, (f"p{suffix}",))
+                    emit("\n", f"p{suffix}")
                 i += 1
                 continue
 
@@ -1451,8 +1907,8 @@ class MDReader:
                 indent, content = m.group(1), m.group(2)
                 pad = "    " * (len(indent) // 2)
                 emit(pad + "•  ", "listmark")
-                emit_inline(content, ("p",))
-                emit("\n", "p")
+                emit_inline(content, (f"p{suffix}",))
+                emit("\n", f"p{suffix}")
                 i += 1
                 continue
 
@@ -1461,8 +1917,8 @@ class MDReader:
                 indent, num, content = m.group(1), m.group(2), m.group(3)
                 pad = "    " * (len(indent) // 2)
                 emit(f"{pad}{num}.  ", "listmark")
-                emit_inline(content, ("p",))
-                emit("\n", "p")
+                emit_inline(content, (f"p{suffix}",))
+                emit("\n", f"p{suffix}")
                 i += 1
                 continue
 
@@ -1488,8 +1944,8 @@ class MDReader:
             while j < n and lines[j].strip() and not special_re.match(lines[j]) and "|" not in lines[j]:
                 para.append(lines[j])
                 j += 1
-            emit_inline(" ".join(s.strip() for s in para), ("p",))
-            emit("\n", "p")
+            emit_inline(" ".join(s.strip() for s in para), (f"p{suffix}",))
+            emit("\n", f"p{suffix}")
             i = j
 
         # Single batch insert

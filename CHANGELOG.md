@@ -3,6 +3,29 @@
 本项目所有重要变更都记录在此文件中。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.0] - 2026-04-15
+
+### 新增
+
+- **英译中 / 中英对照阅读模式**：顶栏新增翻译按钮，三态循环「原 → 双 → 中」，快捷键 `Ctrl+T`
+  - 调用 Google Translate 公共端点 `translate.googleapis.com/translate_a/single?client=gtx`（免 key），通过本地代理 `http://127.0.0.1:7897` 出海，可用 `MD_READER_PROXY` 环境变量覆盖
+  - 段落级粒度：按 block 切块翻译而非整文档打包，原因是要支持「双语对照」需要保持段落对齐，整文档翻译后无法按 block 交错回去
+  - 切块逻辑 `extract_md_blocks`：mirror 渲染器的 line-based parser，产出 `verbatim`（代码块 / 空行 / HR / 表格）、`prefixed`（标题 / 列表 / 任务项，保留 `#`、`- `、`1. ` 等前缀）、`quote`、`para` 四种 block 类型；只对含英文字母的 block 发起翻译，中文块直接跳过
+  - 代码块 / 表格 / 链接 URL 全部走 verbatim 路径不翻译；行内 `**bold**`、`` `code` ``、`[link](url)` 交给 gtx 原样保留（实测 Google 保留得很干净）
+  - 三态切换直接复用已有的 `_render_active(src_override=...)` 入口：翻译层只做 `markdown → markdown` 的变换，渲染器完全不动
+    - `orig` 模式：原文直出
+    - `zh` 模式：每个可翻译 block 替换为中文
+    - `bi` 模式：每个可翻译 block 输出 `原文 + 空行 + 译文` 交错，让下游 `_render` 像渲染两个普通段落一样处理
+- **磁盘缓存**：`%LOCALAPPDATA%\md-reader\translate-cache.json`，key = `sha1(原文)`，跨会话复用；文件 mtime 变化时仅丢弃当前 tab 的 block 切片缓存，译文缓存保留（同一段英文若未变仍命中）
+- **异步不阻塞 UI**：翻译跑在 `threading.Thread(daemon=True)` 里，完成后 `root.after(0, ...)` 回到 Tk 主线程重渲染；翻译中按钮显示 `…`，避免重复触发
+- 每个 tab 独立记忆 `trans_mode` 和 block 切片
+
+### 变更
+
+- 新增 import：`hashlib` / `threading` / `urllib.request` / `urllib.parse`
+- `_open_tab` 在 tab dict 里多塞了 `trans_mode` / `trans_blocks` / `trans_busy` 三个字段
+- `_switch_tab` 末尾调 `_refresh_trans_btn`，按钮随 tab 切换刷新
+
 ## [0.4.8] - 2026-04-14
 
 ### 变更

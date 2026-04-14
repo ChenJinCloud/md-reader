@@ -298,3 +298,55 @@ Windows 对 `HTCAPTION 点击拖拽 maximized 窗口` 的默认处理是：
 | `.md-reader-state.json` | 运行时生成 |
 | `.md-reader.lock` / `.md-reader-pending-*.txt` | IPC 文件 |
 | `.md-reader-crash.log` | faulthandler 崩溃日志（按需生成） |
+| `test-sample-en.md` | 英文样例，专门用于验证翻译 / 中英对照模式 |
+
+## 2026-04-15 0.5.0 — 英译中 / 中英对照阅读模式
+
+### 需求
+用户读英文 md 文档时希望一键出中文，或者原文+译文对照着看。明确两条约束：只做英→中；翻译引擎用 lark-cli 或"其他已有服务"。
+
+### 翻译引擎选型
+第一候选是 lark-cli，但 `lark-cli schema translation` 报 "Unknown service"，直接调 `/open-apis/translation/v1/text/translate` 也 404——飞书开放平台并不对外暴露机器翻译 API。
+
+第二候选是 Claude API，但环境里没有 `ANTHROPIC_API_KEY`，现场让用户配 key 太重，否决。
+
+最终选 **Google Translate `gtx` 公共端点**（`translate.googleapis.com/translate_a/single?client=gtx`）：免 key、质量可接受、响应快。用户已有 Clash 代理跑在 `127.0.0.1:7897`（carnival 项目留下的），直接复用。代理地址通过 `MD_READER_PROXY` 环境变量可覆盖，不强依赖固定端口。
+
+现场实测三段：`**bold**` 和中文标点都保留得很干净，质量可以接受作为"扫读辅助"——正式翻译场景本来就不应该指望 gtx。
+
+### 为什么不用整文档批量翻译
+最初想过把整个 md 一次性发给 gtx，省往返时间。问题是「中英对照」模式需要把译文按 block 对齐回原文，整文档翻译后再切块几乎不可能对齐（Google 会合并/拆分段落）。所以架构从一开始就选**段落级切块 → 逐段翻译 → 段落级重组**。
+
+### 切块策略
+`extract_md_blocks` 基本上是把 `_render` 的 line-based parser 复刻了一遍，但产出数据而非渲染指令。四种 block：
+
+- `verbatim`：代码块 / 空行 / HR / 表格 / ——整块原样留下，翻译层不碰
+- `prefixed`：标题 / 列表项 / 任务项——拆成 `prefix + text`，只翻 text，重组时前缀拼回去
+- `quote`：blockquote 连续行折叠成一段，重组时加回 `> ` 前缀
+- `para`：普通段落连续行折叠（用空格 join），重组时按原样或译文输出
+
+表格特意走 verbatim：monospace 表格翻译后中英宽度不一致，列对齐会爆，ROI 低。
+
+### 三态渲染
+翻译层只做 `markdown → markdown` 变换，下游 `_render` 完全不动。三态：
+
+- `orig`：原文直出
+- `zh`：每个可翻译 block 替换为中文
+- `bi`：每个可翻译 block 输出 `原文 + 空行 + 译文`，让 `_render` 把它们当成两个独立段落处理——零额外状态，视觉上就是"英中英中"交错
+
+这个设计的关键是复用 `_render_active(src_override=...)` 这个既有参数——翻译功能本质上只是个预处理器，跟现有渲染路径零耦合。
+
+### 缓存
+两级：
+
+1. **磁盘译文缓存** `%LOCALAPPDATA%\md-reader\translate-cache.json`，key = `sha1(原文)`，跨会话 / 跨文件共享。同一句话在不同文档里命中同一条。
+2. **tab 级 block 切片缓存** `tab["trans_blocks"]`，避免每次切换三态都重解析。文件 mtime 变化时丢弃切片缓存（但不丢译文缓存）。
+
+### 异步
+翻译跑在 `threading.Thread(daemon=True)` 里，完成后通过 `self.root.after(0, ...)` 回到 Tk 主线程重渲染。翻译中按钮显示 `…` 防重复触发。段落间目前**串行**调用 gtx，N 段 ≈ N×200ms，几十段的文档 2-5 秒能出结果；如果以后大文档体感卡，可以改 `ThreadPoolExecutor(max_workers=6)` 并发。
+
+### 踩坑
+- 第一版 `_build_ui` 里读 `self.tabs[self.active].get("trans_mode")` 但首次 build 时 `self.active == -1`（tab 还没 open），需要 guard `if self.tabs and 0 <= self.active ...`
+- `_switch_tab` 需要额外调 `_refresh_trans_btn`，否则切 tab 时按钮还显示上一个 tab 的状态
+- smoke test 用 Windows cmd 打印中文是乱码（cp936 vs utf-8），写文件读就正常——跟功能无关
+- 没有原生 lark-cli 翻译命令是个意外，文档里 Lark 有「文档翻译」但没有「纯文本翻译」的开放 API
