@@ -37,6 +37,7 @@ MD Reader 就是为这两个场景存在的一个极轻的桌面 Markdown 阅读
 - **和外部编辑器双向同步** — Claude Code 等第三方工具改动当前打开的文件时，reader 窗口自动拉新内容到正文和编辑缓冲区（前提：你本地没有未保存的改动）
 - **文件 watcher** — 活跃标签外部修改自动重新渲染并保留滚动位置
 - **字号连续调节** — 8–28 pt，`A−  N  A+` 按钮、`Ctrl+=` / `Ctrl+-`、或字号数字滚轮，180 ms 防抖合并连击
+- **英译中 / 中英对照阅读** — 顶栏 `原/双/中` 按钮三态循环，`Ctrl+T` 切换，也支持 `--trans bi` / `--trans zh` CLI flag 一键以对照或纯中文打开。免 key（走 Google gtx 公共端点 + 本地代理 `127.0.0.1:7897`，可用 `MD_READER_PROXY` 环境变量覆盖），段落级翻译后走本地磁盘缓存 `%LOCALAPPDATA%\md-reader\translate-cache.json`，同一段英文在任何文件里都只翻一次
 - **GFM 支持** — 标题、段落、加粗/斜体/删除线/行内代码、有序/无序/任务列表、引用、围栏代码块、链接、表格、分隔线
 - **自定义主题目录** — `themes/*.json` 自动加载合并
 - **状态自动保存** — 窗口位置、大小、主题、字号、TOC 宽度、编辑面板高度、最大化状态全部持久化
@@ -57,6 +58,12 @@ MD Reader 就是为这两个场景存在的一个极轻的桌面 Markdown 阅读
 
 ```cmd
 dist\md-reader.exe "path\to\file.md"
+
+rem 打开时就进入中英对照模式
+dist\md-reader.exe --trans bi "path\to\english.md"
+
+rem 打开时就渲染为纯中文
+dist\md-reader.exe --trans zh "path\to\english.md"
 ```
 
 从源码跑（需要本机装 Python 3 且 `pythonw.exe` 在 PATH 里）：
@@ -78,6 +85,7 @@ pythonw md-reader.pyw "path\to\file.md"
 | `F5` / `Ctrl+R` | 重新加载当前标签 |
 | `F11` / 双击顶部 / 点 `□` | 最大化 / 还原 |
 | `Ctrl+E` / 点 `✎` | 切换分屏编辑模式 |
+| `Ctrl+T` / 点 `原` / `双` / `中` | 循环切换翻译模式：原文 → 中英对照 → 纯中文 |
 | `Ctrl+S` | 编辑模式下保存当前文件 |
 | `Ctrl+Tab` / `Ctrl+PgDn` | 下一个标签 |
 | `Ctrl+Shift+Tab` / `Ctrl+PgUp` | 上一个标签 |
@@ -105,6 +113,7 @@ pythonw md-reader.pyw "path\to\file.md"
 | 数字 | 当前字号（8–28 pt） |
 | Parchment / Medium / ... | 当前主题名，点击循环切换 |
 | ↻ | 重新加载当前文件 |
+| 原 / 双 / 中 | 翻译模式三态循环（原文 / 中英对照 / 纯中文） |
 | ✎ | 切换分屏编辑模式 |
 | ☰ | 切换 TOC 侧边栏 |
 | `A−` `N` `A+` | 字号减 / 当前值 / 字号加 |
@@ -254,11 +263,13 @@ dist\md-reader.exe   ← 安装后的默认打开方式
 - **0.4.6** `install.cmd` 一次性注册 `.md` 文件关联，解决 Win10/11 "打开方式"对话框"始终使用"勾选框灰掉的问题
 - **0.4.7** 修复渲染区无法选中复制文本。`self.text` 原本每次渲染后被 `configure(state="disabled")`，tkinter 下这会完全禁用鼠标选区。改为 read-only-but-selectable：保持 `state="normal"`，新增 `_readonly_keypress` 拦截所有写入类按键（只放行 `Ctrl+C / Ctrl+A` 和导航键），同时屏蔽 `<<Paste>>` / `<<Cut>>`。鼠标选区和 Ctrl+C 复制恢复正常
 - **0.4.8** (1) 从 `.cmd + pythonw + .pyw` 正式迁到 `dist\md-reader.exe`（PyInstaller `--onefile --windowed`），`install.cmd` 直接注册真 PE exe，朋友 clone 即用不需要装 Python；(2) 大文档预览性能优化——`_render` 改为内存拼接 + 批量 `tag_add` 一次 insert、表格从 `Frame+Label` embedded window 降级为 monospace 纯文本（CJK 宽度用 `unicodedata.east_asian_width`）、>60k 字符跳过 paper bgstipple 全局贴图、live preview debounce 按文档大小动态（250 / 500 / 900 ms）、去掉 `_render_active` 里多余的 `update_idletasks()`
+- **0.5.0** 英译中 / 中英对照阅读模式。顶栏 `原/双/中` 三态按钮 + `Ctrl+T` 快捷键 + `--trans bi|zh` CLI flag（首次启动和 IPC 两条路径都支持）。翻译引擎走 Google gtx 公共端点（免 key，通过 `127.0.0.1:7897` 代理出海，`MD_READER_PROXY` 可覆盖），段落级切块 + 后台线程翻译 + `%LOCALAPPDATA%\md-reader\translate-cache.json` 磁盘缓存（sha1 keyed，跨文件跨会话）。架构关键：翻译层只做 `markdown → markdown` 变换，复用既有的 `_render_active(src_override=...)` 入口注入，渲染器零改动。对照模式用 `\u200b` 零宽空格做"紧贴上一行"哨兵 + 新增 `*_tight` 变体 tag（`spacing1=0`），让译文紧贴原文同时保留 pair 间正常间距
 
 ## 已知限制
 
 - **没有 Win11 原生 snap** — 拖到屏幕边不会触发贴边、Win+方向键不响应（`overrideredirect` 的代价，0.4.1 走过五轮弯路证明"保 frameless 又要 snap"是坑，这版彻底放弃）
-- **纹理只覆盖 Text 控件** — topbar / tab bar / TOC Frame 的背景依然是纯色，因为 Tk Frame 不支持 stipple。如果要全覆盖需要 Frame → Canvas + `create_image` 铺 tile，那是 0.5.0 的工程量
+- **纹理只覆盖 Text 控件** — topbar / tab bar / TOC Frame 的背景依然是纯色，因为 Tk Frame 不支持 stipple。如果要全覆盖需要 Frame → Canvas + `create_image` 铺 tile
+- **翻译需要代理** — 默认走 `127.0.0.1:7897`（Clash / V2Ray 常用端口）直连 Google gtx。在中国大陆没有代理时翻译会失败（按钮转成 `…` 后回到原文）。可以用 `MD_READER_PROXY` 环境变量切到别的代理端口，或清空 `MD_READER_PROXY=""` 直连
 - **不渲染** LaTeX / Mermaid / PlantUML
 - **图片** 只支持本地绝对路径，网络图片不拉
 

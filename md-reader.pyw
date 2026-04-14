@@ -343,12 +343,18 @@ def acquire_master_lock():
         return None
 
 
-def send_to_master(path):
-    """Drop a uniquely-named pending file for the master to pick up."""
+def send_to_master(path, trans_mode=None):
+    """Drop a uniquely-named pending file for the master to pick up.
+
+    First line = absolute path. Optional second line `trans=<mode>` tells
+    the master to open the new tab in a pre-activated translation mode.
+    """
     fname = f"{PENDING_PREFIX}{os.getpid()}-{int(time.time() * 1000)}.txt"
     try:
         with open(os.path.join(SCRIPT_DIR, fname), "w", encoding="utf-8") as f:
             f.write(os.path.abspath(path))
+            if trans_mode and trans_mode != "orig":
+                f.write("\ntrans=" + trans_mode)
     except Exception:
         pass
 
@@ -662,8 +668,34 @@ def render_blocks(blocks, mode):
     return "\n".join(out)
 
 
+def parse_cli_argv(argv):
+    """Pull `<path>` and optional `--trans <mode>` / `--trans=<mode>` out
+    of argv. Returns (path, trans_mode). trans_mode is None unless a
+    valid mode was passed. Unknown flags are ignored so future additions
+    don't break callers."""
+    path = None
+    trans = None
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == "--trans" and i + 1 < len(argv):
+            trans = argv[i + 1]
+            i += 2
+            continue
+        if a.startswith("--trans="):
+            trans = a.split("=", 1)[1]
+            i += 1
+            continue
+        if path is None and not a.startswith("--"):
+            path = a
+        i += 1
+    if trans not in TRANS_MODES:
+        trans = None
+    return path, trans
+
+
 class MDReader:
-    def __init__(self, initial_path):
+    def __init__(self, initial_path, initial_trans_mode=None):
         self.root = tk.Tk()
         self.root.title("MD Reader")
         self.root.withdraw()
@@ -737,6 +769,11 @@ class MDReader:
 
         self._build_ui()
         self._open_tab(initial_path)
+        if initial_trans_mode and initial_trans_mode != "orig":
+            if 0 <= self.active < len(self.tabs):
+                self.tabs[self.active]["trans_mode"] = initial_trans_mode
+                self._render_active()
+                self._refresh_trans_btn()
 
         # Resize-edge bindings on root (sticky-card style)
         self.root.bind("<Motion>", self._resize_cursor)
@@ -2180,17 +2217,32 @@ class MDReader:
     def _poll_pending(self):
         try:
             for fp in glob.glob(PENDING_GLOB):
+                path = ""
+                pending_trans = None
                 try:
                     with open(fp, "r", encoding="utf-8") as f:
-                        path = f.read().strip()
+                        content = f.read()
+                    lines = content.splitlines()
+                    if lines:
+                        path = lines[0].strip()
+                    for ln in lines[1:]:
+                        if ln.startswith("trans="):
+                            mode = ln[6:].strip()
+                            if mode in TRANS_MODES:
+                                pending_trans = mode
                 except Exception:
-                    path = ""
+                    pass
                 try:
                     os.remove(fp)
                 except Exception:
                     pass
                 if path and os.path.exists(path):
                     self._open_tab(path)
+                    if (pending_trans and pending_trans != "orig"
+                            and 0 <= self.active < len(self.tabs)):
+                        self.tabs[self.active]["trans_mode"] = pending_trans
+                        self._render_active()
+                        self._refresh_trans_btn()
                     self._show_window()
         except Exception:
             pass
@@ -2242,10 +2294,12 @@ def _error_dialog(msg):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        _error_dialog("Usage: md-reader.pyw <path-to-file.md>")
+    md_path, initial_trans = parse_cli_argv(sys.argv)
+    if not md_path:
+        _error_dialog(
+            "Usage: md-reader.exe [--trans bi|zh] <path-to-file.md>"
+        )
         sys.exit(0)
-    md_path = sys.argv[1]
     if not os.path.exists(md_path):
         _error_dialog(f"File not found:\n{md_path}")
         sys.exit(1)
@@ -2253,12 +2307,12 @@ if __name__ == "__main__":
     lock = acquire_master_lock()
     if lock is None:
         # Another instance is running — hand off and exit
-        send_to_master(md_path)
+        send_to_master(md_path, trans_mode=initial_trans)
         sys.exit(0)
 
     # We are the master
     try:
-        MDReader(md_path)
+        MDReader(md_path, initial_trans_mode=initial_trans)
     finally:
         try:
             lock.close()

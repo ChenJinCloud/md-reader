@@ -2,14 +2,19 @@
 name: md-reader
 description: >-
   Open a Markdown file in MD Reader — a lightweight frameless desktop
-  Markdown reader for Windows with paper-textured themes. Use this skill
-  when the user asks to view, open, render, preview, or "look at" a .md
-  file in a dedicated reader window — e.g. "打开你编辑的那份 md",
+  Markdown reader for Windows with paper-textured themes and optional
+  English-to-Chinese translation / bilingual view. Use this skill when
+  the user asks to view, open, render, preview, or "look at" a .md file
+  in a dedicated reader window — e.g. "打开你编辑的那份 md",
   "用阅读器看一下", "渲染一下这份 md", "让我看看你刚写的方案",
   "show me that md", "open it in the reader", "render that markdown".
-  Do NOT use this skill when the user wants the file's content inlined
-  into the conversation (use the Read tool) or wants to modify the file
-  (use Edit / Write). Windows only.
+  ALSO use this skill for bilingual / translation intent on English md
+  files — "中英对照打开", "对照看一下", "双语打开", "英中对照",
+  "open bilingually", "show me side by side in Chinese" → pass
+  `--trans bi`. "翻译成中文打开", "用中文看", "translate to Chinese"
+  → pass `--trans zh`. Do NOT use this skill when the user wants the
+  file's content inlined into the conversation (use the Read tool) or
+  wants to modify the file (use Edit / Write). Windows only.
 metadata:
   requires:
     bins: []
@@ -48,6 +53,14 @@ dedicated window, not in the chat":
 - `show me the md` / `open in the reader` / `render this markdown file`
 - `我想看这份文档` (context: a .md file)
 
+Also on bilingual / translation intent for English `.md` files — route
+these to the same skill with a `--trans` flag:
+
+- `中英对照打开` / `双语打开` / `对照看一下` / `英中对照` / `bilingual` /
+  `side by side` → add `--trans bi`
+- `翻译成中文打开` / `用中文看这份 md` / `translate this md to Chinese` /
+  `render in Chinese` → add `--trans zh`
+
 Do NOT trigger when:
 
 - User asks a question about the file's content → use Read and answer
@@ -55,15 +68,38 @@ Do NOT trigger when:
 - User wants to modify the file → use Edit / Write
 - User wants the raw content displayed in the conversation → use Read
 - The file isn't a .md / .markdown
+- User wants the translated text pasted into the chat → use Read + do
+  the translation in-conversation (this skill only renders in a window)
 
 ## How to invoke
 
 One shell command. Always pass an **absolute path**. Resolve relative
 paths to absolute before invoking.
 
+Plain reading (default):
+
 ```bash
 "D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" "<absolute-path-to-md-file>"
 ```
+
+Bilingual (English + Chinese interleaved per paragraph):
+
+```bash
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" --trans bi "<absolute-path-to-md-file>"
+```
+
+Pure Chinese:
+
+```bash
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" --trans zh "<absolute-path-to-md-file>"
+```
+
+`--trans` goes **before** the path. The flag is forwarded to the running
+master instance via the `.md-reader-pending-*.txt` IPC file, so it works
+whether or not MD Reader is already open. First-time translation of a
+given paragraph takes a few seconds (Google gtx via local proxy); after
+that everything is cached in `%LOCALAPPDATA%\md-reader\translate-cache.json`
+and opens instantly.
 
 Behavior guarantees:
 
@@ -94,7 +130,7 @@ Behavior guarantees:
 - Don't print the file's content to the user after opening — they're
   going to read it in the reader window.
 
-## One-line example
+## One-line examples
 
 User: "打开你刚写的 2026-04-14-周报-weekly.md"
 
@@ -104,7 +140,31 @@ You:
 "D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" "D:\ClaudeCodeWorkspace\2026-04-14-周报-weekly.md"
 ```
 
-Then reply in one short sentence: "已用 MD Reader 打开。"
+Then reply: "已用 MD Reader 打开。"
+
+---
+
+User: "中英对照打开这份英文 spec.md"
+
+You (after resolving to absolute path):
+
+```bash
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" --trans bi "D:\work\spec.md"
+```
+
+Then reply: "已用 MD Reader 以中英对照打开。首次翻译需几秒，之后会走本地缓存秒开。"
+
+---
+
+User: "把这份英文 readme 翻译成中文给我看"
+
+If they want to READ it themselves in a window → use `--trans zh`. If
+they want the translation inlined in chat → this skill is wrong, use
+Read + answer in chat.
+
+```bash
+"D:\ClaudeCodeWorkspace\2026-04-05-AI编程学习-learning-ai-coding\2026-04-13-markdown阅读器-md-reader\dist\md-reader.exe" --trans zh "D:\work\README.md"
+```
 
 Don't Read the file, don't summarize it, don't paste its content —
 the user is reading it themselves in the window.
